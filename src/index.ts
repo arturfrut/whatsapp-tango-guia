@@ -3,6 +3,7 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { Request, Response, NextFunction } from 'express';
 
 // Importar rutas
 import webhookRoutes from './routes/webhook';
@@ -39,7 +40,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Logging básico
-app.use((req, res, next) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
@@ -49,7 +50,7 @@ app.use((req, res, next) => {
 // =============================================
 
 // Ruta raíz
-app.get('/', (req, res) => {
+app.get('/', (req: Request, res: Response) => {
   res.json({
     message: '🤖 WhatsApp Bot Backend API',
     status: 'running',

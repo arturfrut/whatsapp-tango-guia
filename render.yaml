@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: whatsapp-bot-backend
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # Las siguientes se configuran manualmente en el dashboard:
+      # META_ACCESS_TOKEN
+      # META_PHONE_NUMBER_ID  
+      # META_VERIFY_TOKEN
+      # META_WEBHOOK_SECRET
+      # SUPABASE_URL
+      # SUPABASE_SERVICE_ROLE_KEY

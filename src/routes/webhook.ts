@@ -1,8 +1,9 @@
-import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import { WhatsAppWebhookEntry, WhatsAppIncomingMessage } from '../types';
+import { Request, Response, Router } from 'express';
 import { WhatsAppService } from '../services/whatsapp';
-import { DatabaseService } from '../services/database';
+import { WhatsAppIncomingMessage, WhatsAppWebhookEntry } from '../types';
+import { normalizePhoneNumber } from '../utils/normalizePhoneNumber';
+import { handleConversation } from './processTangoConversation';
 
 const router = Router();
 
@@ -91,16 +92,16 @@ function verifyWebhookSignature(payload: any, signature: string): boolean {
 }
 
 async function processIncomingMessage(message: WhatsAppIncomingMessage) {
-  const phoneNumber = message.from;
+  const phoneNumber = normalizePhoneNumber(message.from) ;
   console.log(`📱 Processing message from: ${phoneNumber}`);
 
   try {
     // 1. Crear o obtener usuario
-    const user = await DatabaseService.getOrCreateUser(phoneNumber);
-    if (!user) {
-      console.error('❌ Could not create/get user');
-      return;
-    }
+    // const user = await DatabaseService.getOrCreateUser(phoneNumber);
+    // if (!user) {
+    //   console.error('❌ Could not create/get user');
+    //   return;
+    // }
 
     // 2. Extraer contenido del mensaje
     let messageContent = '';
@@ -115,38 +116,21 @@ async function processIncomingMessage(message: WhatsAppIncomingMessage) {
     }
 
     // 3. Guardar mensaje en base de datos
-    await DatabaseService.saveIncomingMessage(
-      phoneNumber,
-      message.type,
-      messageContent,
-      message.id
-    );
+    // await DatabaseService.saveIncomingMessage(
+    //   phoneNumber,
+    //   message.type,
+    //   messageContent,
+    //   message.id
+    // );
 
     // 4. Marcar como leído
     await WhatsAppService.markAsRead(message.id);
 
-    // 5. RESPUESTA BÁSICA DE PRUEBA
-    await sendBasicResponse(phoneNumber, messageContent);
+    // 5. CONVERSACIÓN
+    await handleConversation(phoneNumber, messageContent);
 
   } catch (error) {
     console.error('❌ Error processing message:', error);
-  }
-}
-
-async function sendBasicResponse(phoneNumber: string, receivedMessage: string) {
-  // Por ahora, respuesta de eco simple para probar
-  const responseText = `🤖 Bot funcionando! Recibí: "${receivedMessage}"
-  
-📱 Tu número: ${phoneNumber}
-⏰ Hora: ${new Date().toLocaleString('es-AR')}
-
-🚧 Sistema en desarrollo...`;
-
-  const success = await WhatsAppService.sendTextMessage(phoneNumber, responseText);
-  
-  if (success) {
-    // Guardar la respuesta en la base de datos
-    await DatabaseService.saveOutgoingMessage(phoneNumber, 'text', responseText);
   }
 }
 

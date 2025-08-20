@@ -4,12 +4,9 @@ import { WhatsAppService } from '../services/whatsapp';
 import { WhatsAppIncomingMessage, WhatsAppWebhookEntry } from '../types';
 import { normalizePhoneNumber } from '../utils/normalizePhoneNumber';
 import { handleConversation } from './processTangoConversation';
+import { DatabaseService } from '../services/database';
 
 const router = Router();
-
-// =============================================
-// VERIFICACIÓN DEL WEBHOOK (GET)
-// =============================================
 
 router.get('/', (req: Request, res: Response) => {
   const mode = req.query['hub.mode'];
@@ -27,9 +24,6 @@ router.get('/', (req: Request, res: Response) => {
   }
 });
 
-// =============================================
-// RECEPCIÓN DE MENSAJES (POST)
-// =============================================
 
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -69,9 +63,6 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-// =============================================
-// FUNCIONES AUXILIARES
-// =============================================
 
 function verifyWebhookSignature(payload: any, signature: string): boolean {
   if (!process.env.META_WEBHOOK_SECRET || !signature) {
@@ -97,11 +88,15 @@ async function processIncomingMessage(message: WhatsAppIncomingMessage) {
 
   try {
     // 1. Crear o obtener usuario
-    // const user = await DatabaseService.getOrCreateUser(phoneNumber);
-    // if (!user) {
-    //   console.error('❌ Could not create/get user');
-    //   return;
-    // }
+    const user = await DatabaseService.getOrCreateUser(phoneNumber);
+    if (!user) {
+      console.error('❌ Could not create/get user');
+      await WhatsAppService.sendTextMessage(
+        phoneNumber,
+        '❌ Ocurrió un error al procesar tu mensaje. Por favor intenta nuevamente.'
+      );
+      return;
+    }
 
     // 2. Extraer contenido del mensaje
     let messageContent = '';
@@ -115,23 +110,25 @@ async function processIncomingMessage(message: WhatsAppIncomingMessage) {
       }
     }
 
-    // 3. Guardar mensaje en base de datos
-    // await DatabaseService.saveIncomingMessage(
-    //   phoneNumber,
-    //   message.type,
-    //   messageContent,
-    //   message.id
-    // );
-
-    // 4. Marcar como leído
+    // 3. Marcar como leído
     await WhatsAppService.markAsRead(message.id);
 
-    // 5. CONVERSACIÓN
+    // 4. CONVERSACIÓN
     await handleConversation(phoneNumber, messageContent);
 
   } catch (error) {
     console.error('❌ Error processing message:', error);
+    
+    try {
+      await WhatsAppService.sendTextMessage(
+        phoneNumber,
+        '❌ Ocurrió un error al procesar tu mensaje. Por favor intenta nuevamente en unos minutos.'
+      );
+    } catch (sendError) {
+      console.error('❌ Error sending error message:', sendError);
+    }
   }
 }
+
 
 export default router;

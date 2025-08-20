@@ -110,3 +110,100 @@ export interface ApiResponse<T = any> {
   error?: string;
   message?: string;
 }
+
+export enum RecurrencePattern {
+  NONE = 'none',
+  DAILY = 'daily',
+  WEEKLY = 'weekly',
+  MONTHLY = 'monthly',
+  CUSTOM = 'custom'
+}
+
+export enum DayOfWeek {
+  MONDAY = 'monday',
+  TUESDAY = 'tuesday',
+  WEDNESDAY = 'wednesday',
+  THURSDAY = 'thursday',
+  FRIDAY = 'friday',
+  SATURDAY = 'saturday',
+  SUNDAY = 'sunday'
+}
+
+export enum EventType {
+  SPECIAL_EVENT = 'special_event',
+  CLASS = 'class',
+  SEMINAR = 'seminar',
+  MILONGA = 'milonga',
+  PRACTICE = 'practice'
+}
+
+export enum ClassLevel {
+  BEGINNER = 'beginner',
+  INTERMEDIATE = 'intermediate',
+  ADVANCED = 'advanced',
+  ALL_LEVELS = 'all_levels'
+}
+
+
+export interface EventSchedule {
+  id: string;
+  event_id: string;
+  start_date: string;
+  end_date?: string;
+  start_time: string;
+  end_time?: string;
+  timezone: string;
+  recurrence_pattern: RecurrencePattern;
+  recurrence_rule?: Record<string, any>;
+  days_of_week?: DayOfWeek[];
+  ends_at?: string;
+  created_at: string;
+}
+
+export interface Event {
+  id: string;
+  title: string;
+  event_type: EventType;
+  description?: string;
+  class_level?: ClassLevel;
+  price?: number;
+  address?: string;
+  has_limited_capacity: boolean;
+  max_capacity?: number;
+  current_attendees: number;
+  attendance_tracking: boolean;
+  thumbnail_image_url?: string;
+  thumbnail_meta_id?: string;
+  is_active: boolean;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface EventTeacher {
+  id: string;
+  event_id: string;
+  teacher_id: string;
+  is_primary_teacher: boolean;
+  created_at: string;
+}
+
+export interface EventWithDetails extends Event {
+  event_images: any;
+  event_teachers: any;
+  event_schedules: any;
+  schedules?: EventSchedule[];
+  images?: EventImage[];
+  teachers?: (EventTeacher & { teacher: User })[];
+}
+
+export interface EventImage {
+  id: string;
+  event_id: string;
+  image_url: string;
+  meta_media_id?: string;
+  caption?: string;
+  display_order: number;
+  created_at: string;
+}

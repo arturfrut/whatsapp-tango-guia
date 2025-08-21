@@ -245,58 +245,6 @@ export class DatabaseService {
     }
   }
 
-  static async getEventsForToday(): Promise<Event[]> {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      const { data: events, error } = await supabase
-        .from('events')
-        .select(`
-          *,
-          event_schedules!inner(*)
-        `)
-        .eq('is_active', true)
-        .eq('event_schedules.start_date', today);
-
-      if (error) {
-        console.error('❌ Error fetching today events:', error);
-        return [];
-      }
-
-      return events || [];
-    } catch (error) {
-      console.error('❌ Error in getEventsForToday:', error);
-      return [];
-    }
-  }
-
-  static async getEventsForWeek(): Promise<Event[]> {
-    try {
-      const today = new Date();
-      const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-      
-      const { data: events, error } = await supabase
-        .from('events')
-        .select(`
-          *,
-          event_schedules!inner(*)
-        `)
-        .eq('is_active', true)
-        .gte('event_schedules.start_date', today.toISOString().split('T')[0])
-        .lte('event_schedules.start_date', weekFromNow.toISOString().split('T')[0]);
-
-      if (error) {
-        console.error('❌ Error fetching week events:', error);
-        return [];
-      }
-
-      return events || [];
-    } catch (error) {
-      console.error('❌ Error in getEventsForWeek:', error);
-      return [];
-    }
-  }
-
   static async saveIncomingMessage(
     phoneNumber: string, 
     messageType: string, 
@@ -361,23 +309,4 @@ export class DatabaseService {
     }
   }
 
-  static async testConnection(): Promise<boolean> {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('count')
-        .limit(1);
-      
-      if (error) {
-        console.error('❌ Database connection test failed:', error);
-        return false;
-      }
-      
-      console.log('✅ Database connection successful');
-      return true;
-    } catch (error) {
-      console.error('❌ Database connection test error:', error);
-      return false;
-    }
-  }
 }

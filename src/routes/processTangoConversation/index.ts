@@ -1,17 +1,19 @@
 import { WhatsAppService } from '../../services/whatsapp'
 import {
-  ChatState
+  ChatState,
+  TempEventData
 } from '../../types/processTangoConversation'
 import {
   getMainMenuMessage
 } from './utils'
-import { caseToday, caseWeek } from './showEvents'
+import { caseToday, caseWeek, handleEventSelection } from './showEvents'
 import { handleEventCreation, showSpecialMenu } from './createEvent'
 import { handleTeacherCreation } from './createTeacher'
 
 const secretWord = process.env.SECRETWORD
 
 const userStates = new Map<string, ChatState>()
+const tempEventData = new Map<string, TempEventData>()
 
 export async function handleConversation(
   phoneNumber: string,
@@ -32,7 +34,6 @@ export async function handleConversation(
 2 - No`
     )
   }
-
   switch (currentState) {
     case ChatState.START:
       userStates.set(phoneNumber, ChatState.MAIN_MENU)
@@ -42,6 +43,10 @@ export async function handleConversation(
     case ChatState.MENU_TODAY:
     case ChatState.MENU_WEEK:
       return handleMainMenuOptions(userStates, phoneNumber, normalizedMessage)
+
+    case ChatState.MENU_TODAY_DETAILS:
+    case ChatState.MENU_WEEK_DETAILS:
+      return handleEventSelection(userStates, tempEventData, phoneNumber, normalizedMessage)
 
     case ChatState.SECRET_CODE:
       return handleSecretCode(userStates, phoneNumber, normalizedMessage)
@@ -74,7 +79,6 @@ export async function handleConversation(
   }
 }
 
-// Maneja el código secreto y decide el flujo
 async function handleSecretCode(
   userStates: Map<string, ChatState>,
   phoneNumber: string,
@@ -99,9 +103,9 @@ async function handleMainMenuOptions(
   normalizedMessage: string
 ) {
   if (['1', 'hoy'].includes(normalizedMessage)) {
-    return caseToday(userStates, phoneNumber)
+    return caseToday(userStates, tempEventData, phoneNumber)
   } else if (['2', 'semana'].includes(normalizedMessage)) {
-    return caseWeek(userStates, phoneNumber)
+    return caseWeek(userStates, tempEventData, phoneNumber)
   } else if (['3'].includes(normalizedMessage)) {
     userStates.set(phoneNumber, ChatState.MENU_18_35)
     return WhatsAppService.sendTextMessage(phoneNumber, `✨ En proceso...`)

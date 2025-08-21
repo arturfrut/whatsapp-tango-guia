@@ -3,6 +3,8 @@ export enum ChatState {
   MAIN_MENU = 'MAIN_MENU',
   MENU_TODAY = 'MENU_TODAY',
   MENU_WEEK = 'MENU_WEEK',
+  MENU_TODAY_DETAILS = 'MENU_TODAY_DETAILS', 
+  MENU_WEEK_DETAILS = 'MENU_WEEK_DETAILS',   
   MENU_18_35 = 'MENU_18_35',
   MENU_REPORT = 'MENU_REPORT',
   SECRET_CODE = 'SECRET_CODE',
@@ -29,12 +31,12 @@ export enum ChatState {
   CREATE_EVENT_CONFIRMATION = 'CREATE_EVENT_CONFIRMATION'
 }
 
-// Interfaces para datos temporales
 export interface NewTeacherData {
   name?: string
   password?: string
   details?: string
 }
+
 
 export interface NewEventData {
   event_type?: string
@@ -47,4 +49,9 @@ export interface NewEventData {
   time?: string
   has_recurrence?: boolean
   day_of_week?: string
+}
+
+export interface TempEventData {
+  events: any[]
+  context: 'today' | 'week'
 }

@@ -1,4 +1,5 @@
 import { WhatsAppService } from '../../services/whatsapp'
+import { DatabaseService } from '../../services/database'
 import {
   ChatState,
   TempEventData
@@ -22,18 +23,39 @@ export async function handleConversation(
   const normalizedMessage = messageContent.trim().toLowerCase()
   const currentState = userStates.get(phoneNumber) || ChatState.START
 
-  // --- SECRET CODE ---
   if (normalizedMessage === secretWord) {
-    userStates.set(phoneNumber, ChatState.SECRET_CODE)
-    return WhatsAppService.sendTextMessage(
-      phoneNumber,
-      `🔐 ¡Accediste al menú secreto!
+    try {
+      const existingUser = await DatabaseService.getUserByPhone(phoneNumber)
+      
+      if (existingUser && existingUser.role !== 'normal_query') {
+        console.log(`Usuario conocido detectado: ${existingUser.name} (${existingUser.role})`)
+        return showSpecialMenu(userStates, phoneNumber)
+      } else {
+        userStates.set(phoneNumber, ChatState.SECRET_CODE)
+        return WhatsAppService.sendTextMessage(
+          phoneNumber,
+          `🔐 ¡Accediste al menú secreto!
 
 ¿Eres un nuevo profesor?
 1 - Sí
 2 - No`
-    )
+        )
+      }
+    } catch (error) {
+      console.error('Error verificando usuario existente:', error)
+      // En caso de error, continuar con flujo normal
+      userStates.set(phoneNumber, ChatState.SECRET_CODE)
+      return WhatsAppService.sendTextMessage(
+        phoneNumber,
+        `🔐 ¡Accediste al menú secreto!
+
+¿Eres un nuevo profesor?
+1 - Sí
+2 - No`
+      )
+    }
   }
+
   switch (currentState) {
     case ChatState.START:
       userStates.set(phoneNumber, ChatState.MAIN_MENU)
@@ -60,6 +82,12 @@ export async function handleConversation(
     case ChatState.SPECIAL_MENU:
     case ChatState.CREATE_EVENT_TITLE:
     case ChatState.CREATE_EVENT_DESCRIPTION:
+    case ChatState.CREATE_EVENT_INSTRUCTOR_SELECTION:
+    case ChatState.CREATE_EVENT_INSTRUCTOR_INPUT:
+    case ChatState.CREATE_EVENT_INSTRUCTOR_LIST:
+    case ChatState.CREATE_EVENT_INSTRUCTOR_SELECTION_LIST:
+    case ChatState.CREATE_EVENT_INSTRUCTOR_LIST_SELECTION:
+    case ChatState.CREATE_EVENT_INSTRUCTOR_NOT_FOUND:
     case ChatState.CREATE_EVENT_LEVEL:
     case ChatState.CREATE_EVENT_PRICE:
     case ChatState.CREATE_EVENT_ADDRESS:

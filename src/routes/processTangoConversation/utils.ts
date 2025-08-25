@@ -166,7 +166,7 @@ export function returnToMainMenu(): string {
 
 1 - Quiero saber las clases o eventos de *hoy*
 2 - Quiero saber las clases o eventos de *la semana*
-3 - Tengo entre 18 y 35 años y quiero entrar al mundo tanguero
+3 - Tengo entre 18 y 35 años y quiero entrar al mundo del tango
 4 - Quiero *denunciar algo* o hacer una *recomendación tanguera*`
 }
 
@@ -176,6 +176,6 @@ Sé prácticamente todo lo que hay que saber sobre el tango en Mar del Plata. ¿
 
 1 - Quiero saber las clases o eventos de *hoy*
 2 - Quiero saber las clases o eventos de *la semana*
-3 - Tengo entre 18 y 35 años y quiero entrar al mundo tanguero
+3 - Tengo entre 18 y 35 años y quiero entrar al mundo del tango
 4 - Quiero *denunciar algo* o hacer una *recomendación tanguera*`
 }

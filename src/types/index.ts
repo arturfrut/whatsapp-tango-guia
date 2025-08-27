@@ -206,4 +206,4 @@ export interface EventImage {
   caption?: string;
   display_order: number;
   created_at: string;
-}
+} 

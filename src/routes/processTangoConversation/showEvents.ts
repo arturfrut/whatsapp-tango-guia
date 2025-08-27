@@ -1,8 +1,10 @@
-
-import { supabase } from '../../config/supabase'
+import { DatabaseService } from '../../services/database'
 import { WhatsAppService } from '../../services/whatsapp'
-import { ChatState, TempEventData } from '../../types/processTangoConversation'
-import { filterEventsByDateRange } from '../../utils/eventFiltering'
+import {
+  ChatState,
+  TempEventData,
+  CompleteEventData
+} from '../../types/processTangoConversation'
 import { getMainMenuMessage, returnToMainMenu } from './utils'
 import { format, addDays } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -15,83 +17,49 @@ export const caseToday = async (
   userStates.set(phoneNumber, ChatState.MENU_TODAY)
 
   try {
-    const today = new Date()
+    const today = format(new Date(), 'yyyy-MM-dd')
 
-    const { data: events, error } = await supabase
-      .from('events')
-      .select(
-        `
-        *,
-        event_schedules (
-          id,
-          start_date,
-          end_date,
-          start_time,
-          end_time,
-          timezone,
-          recurrence_pattern,
-          recurrence_rule,
-          days_of_week,
-          ends_at
-        ),
-        event_teachers (
-          id,
-          is_primary_teacher,
-          teacher:users!event_teachers_teacher_id_fkey (
-            id,
-            name,
-            phone_number
-          )
-        )
-      `
-      )
-      .eq('is_active', true)
-      .is('deleted_at', null)
-
-    if (error) {
-      console.error('❌ Error al traer eventos:', error)
-      await WhatsAppService.sendTextMessage(
-        phoneNumber,
-        '⚠️ Hubo un error al obtener las actividades del dia de hoy.'
-      )
-      return
-    }
-
-    const filteredEvents = events ? filterEventsByDateRange(events, today) : []
+    const events = await getTangoEventsForDate(today)
 
     let message = `🎉 Estas son las actividades de *hoy*:\n\n`
 
-    if (filteredEvents.length === 0) {
+    if (events.length === 0) {
       message += '🙁 No hay actividades programadas para hoy.'
       await WhatsAppService.sendTextMessage(phoneNumber, message)
       return WhatsAppService.sendTextMessage(phoneNumber, returnToMainMenu())
-    } else {
-      tempEventData.set(phoneNumber, {
-        events: filteredEvents,
-        context: 'today'
-      })
-
-      filteredEvents.forEach((event: any, index: number) => {
-        const teacher = event.event_teachers?.find(
-          (t: any) => t.is_primary_teacher
-        )?.teacher?.name
-        const startTime = event.event_schedules?.[0]?.start_time || 'Sin hora'
-        message += `${index + 1}. *${event.title || 'Evento'}*\n🕒 ${startTime}\n👤 ${
-          teacher || 'Por confirmar'
-        }\n📍 ${event.address || 'Sin dirección'}\n\n`
-      })
-
-      userStates.set(phoneNumber, ChatState.MENU_TODAY_DETAILS)
-      
-      message += `📋 *Selecciona un número (1-${filteredEvents.length}) para ver más detalles*\n🏠 *Presiona 0 para volver al menú principal*`
     }
 
+    tempEventData.set(phoneNumber, {
+      events: events,
+      context: 'today'
+    })
+
+    events.forEach((event, index) => {
+      const primaryOrganizer = event.organizers?.find(org => org.is_primary)
+      const organizerName =
+        primaryOrganizer?.one_time_teacher_name ||
+        primaryOrganizer?.user?.name ||
+        'Por confirmar'
+
+      const eventTime = getEventDisplayTime(event)
+
+      message += `${index + 1}. *${event.title}*\n`
+      message += `🕒 ${eventTime}\n`
+      message += `👤 ${organizerName}\n`
+      message += `📍 ${event.address}\n\n`
+    })
+
+    userStates.set(phoneNumber, ChatState.MENU_TODAY_DETAILS)
+
+    message += `📋 *Selecciona un número (1-${events.length}) para ver más detalles*\n`
+    message += `🏠 *Presiona 0 para volver al menú principal*`
+
     return WhatsAppService.sendTextMessage(phoneNumber, message)
-  } catch (err) {
-    console.error('❌ Excepción en caseToday:', err)
+  } catch (error) {
+    console.error('❌ Error in caseToday:', error)
     return WhatsAppService.sendTextMessage(
       phoneNumber,
-      '⚠️ Ocurrió un error inesperado al obtener las actividades de hoy.'
+      '⚠️ Ocurrió un error al obtener las actividades de hoy.'
     )
   }
 }
@@ -105,119 +73,65 @@ export const caseWeek = async (
 
   try {
     const today = new Date()
-    const endOfWeek = addDays(today, 6)
+    const startDate = format(today, 'yyyy-MM-dd')
+    const endDate = format(addDays(today, 6), 'yyyy-MM-dd')
 
-    const { data: events, error } = await supabase
-      .from('events')
-      .select(
-        `
-        *,
-        event_schedules (
-          id,
-          start_date,
-          end_date,
-          start_time,
-          end_time,
-          timezone,
-          recurrence_pattern,
-          recurrence_rule,
-          days_of_week,
-          ends_at
-        ),
-        event_teachers (
-          id,
-          is_primary_teacher,
-          teacher:users!event_teachers_teacher_id_fkey (
-            id,
-            name
-          )
-        )
-      `
-      )
-      .eq('is_active', true)
-      .is('deleted_at', null)
-
-    if (error) {
-      console.error('❌ Error al traer eventos:', error)
-      await WhatsAppService.sendTextMessage(
-        phoneNumber,
-        '⚠️ Hubo un error al obtener las actividades de la semana.'
-      )
-      return
-    }
-
-    const weekEvents = events ? filterEventsByDateRange(events, today, endOfWeek) : []
-
-    const groupedByDay: Record<string, any[]> = {}
-    const weekDays = Array.from({ length: 7 }, (_, i) => addDays(today, i))
-
-    weekDays.forEach(day => {
-      const dayKey = format(day, 'yyyy-MM-dd')
-
-      weekEvents.forEach((event: any) => {
-        const eventOccursOnDay = event.event_schedules?.some((schedule: any) => {
-          if (schedule.recurrence_pattern === 'none' || !schedule.recurrence_pattern) {
-            return format(new Date(schedule.start_date), 'yyyy-MM-dd') === dayKey
-          }
-
-          if (schedule.recurrence_pattern === 'weekly' && schedule.days_of_week) {
-            const dayName = day.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()
-            const startDate = new Date(schedule.start_date)
-            return day >= startDate && schedule.days_of_week.includes(dayName)
-          }
-
-          return false
-        })
-
-        if (eventOccursOnDay) {
-          if (!groupedByDay[dayKey]) groupedByDay[dayKey] = []
-          groupedByDay[dayKey].push({
-            ...event,
-            displayDate: dayKey
-          })
-        }
-      })
-    })
+    const weekEvents = await getTangoEventsForDateRange(startDate, endDate)
 
     let message = `🗓️ Estas son las actividades de *la semana*:\n\n`
-    const daysSorted = Object.keys(groupedByDay).sort()
 
-    if (daysSorted.length === 0) {
+    if (weekEvents.length === 0) {
       message += '🙁 No hay actividades programadas para esta semana.'
       await WhatsAppService.sendTextMessage(phoneNumber, message)
       return WhatsAppService.sendTextMessage(phoneNumber, returnToMainMenu())
-    } else {
-      const allWeekEvents: any[] = []
-      let counter = 1
-
-      for (const day of daysSorted) {
-        const dayLabel = format(new Date(day), 'EEEE dd/MM', { locale: es })
-        message += `📅 *${dayLabel}*\n`
-
-        groupedByDay[day].forEach(event => {
-          const teacher = event.event_teachers?.find((t: any) => t.is_primary_teacher)?.teacher?.name
-          message += `${counter}. *${event.title}*\n📍 ${event.address || 'Sin dirección'}\n🕒 ${event.event_schedules?.[0]?.start_time || 'Sin hora'}\n👤 ${teacher || 'Por confirmar'}\n\n`
-          
-          allWeekEvents.push(event)
-          counter++
-        })
-      }
-
-      tempEventData.set(phoneNumber, {
-        events: allWeekEvents,
-        context: 'week'
-      })
-
-      userStates.set(phoneNumber, ChatState.MENU_WEEK_DETAILS)
-      
-      message += `📋 *Selecciona un número (1-${allWeekEvents.length}) para ver más detalles*\n🏠 *Presiona 0 para volver al menú principal*`
     }
 
+    // Group events by date
+    const groupedByDay = groupEventsByDate(weekEvents)
+    const sortedDates = Object.keys(groupedByDay).sort()
+    const allWeekEvents: CompleteEventData[] = []
+    let counter = 1
+
+    for (const dateStr of sortedDates) {
+      const dayLabel = format(new Date(dateStr), 'EEEE dd/MM', { locale: es })
+      message += `📅 *${dayLabel}*\n`
+
+      groupedByDay[dateStr].forEach(event => {
+        const primaryOrganizer = event.organizers?.find(org => org.is_primary)
+        const organizerName =
+          primaryOrganizer?.one_time_teacher_name ||
+          primaryOrganizer?.user?.name ||
+          'Por confirmar'
+
+        const eventTime = getEventDisplayTime(event)
+
+        message += `${counter}. *${event.title}*\n`
+        message += `📍 ${event.address}\n`
+        message += `🕒 ${eventTime}\n`
+        message += `👤 ${organizerName}\n\n`
+
+        allWeekEvents.push(event)
+        counter++
+      })
+    }
+
+    tempEventData.set(phoneNumber, {
+      events: allWeekEvents,
+      context: 'week'
+    })
+
+    userStates.set(phoneNumber, ChatState.MENU_WEEK_DETAILS)
+
+    message += `📋 *Selecciona un número (1-${allWeekEvents.length}) para ver más detalles*\n`
+    message += `🏠 *Presiona 0 para volver al menú principal*`
+
     return WhatsAppService.sendTextMessage(phoneNumber, message)
-  } catch (err) {
-    console.error('❌ Excepción en caseWeek:', err)
-    await WhatsAppService.sendTextMessage(phoneNumber, '⚠️ Ocurrió un error inesperado.')
-    return
+  } catch (error) {
+    console.error('❌ Error in caseWeek:', error)
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      '⚠️ Ocurrió un error al obtener las actividades de la semana.'
+    )
   }
 }
 
@@ -228,7 +142,7 @@ export async function handleEventSelection(
   normalizedMessage: string
 ) {
   const tempData = tempEventData.get(phoneNumber)
-  
+
   if (!tempData) {
     userStates.set(phoneNumber, ChatState.MAIN_MENU)
     return WhatsAppService.sendTextMessage(phoneNumber, getMainMenuMessage())
@@ -241,7 +155,11 @@ export async function handleEventSelection(
   }
 
   const selectedNumber = parseInt(normalizedMessage)
-  if (isNaN(selectedNumber) || selectedNumber < 1 || selectedNumber > tempData.events.length) {
+  if (
+    isNaN(selectedNumber) ||
+    selectedNumber < 1 ||
+    selectedNumber > tempData.events.length
+  ) {
     return WhatsAppService.sendTextMessage(
       phoneNumber,
       `❓ Opción inválida. Por favor selecciona un número del 1 al ${tempData.events.length}, o presiona 0 para volver al menú principal.`
@@ -249,7 +167,7 @@ export async function handleEventSelection(
   }
 
   const selectedEvent = tempData.events[selectedNumber - 1]
-  
+
   await showEventDetails(phoneNumber, selectedEvent)
 
   return WhatsAppService.sendTextMessage(
@@ -261,97 +179,318 @@ export async function handleEventSelection(
   )
 }
 
-async function showEventDetails(phoneNumber: string, event: any) {
-  const teacher = event.event_teachers?.find((t: any) => t.is_primary_teacher)?.teacher
-  const schedule = event.event_schedules?.[0]
+async function getTangoEventsForDate(
+  date: string
+): Promise<CompleteEventData[]> {
+  try {
+    const specificEvents = await DatabaseService.getTangoEventsByDate(date)
 
-  let message = `🎭 *${event.title || 'Evento sin título'}*\n\n`
+    const recurringEvents = await getRecurringEventsForDate(date)
+
+    const allEvents = [...specificEvents, ...recurringEvents]
+    const uniqueEvents = allEvents.filter(
+      (event, index, self) => self.findIndex(e => e.id === event.id) === index
+    )
+
+    return uniqueEvents.sort((a, b) => {
+      const timeA = getEventSortTime(a)
+      const timeB = getEventSortTime(b)
+      return timeA.localeCompare(timeB)
+    })
+  } catch (error) {
+    console.error('Error getting tango events for date:', error)
+    return []
+  }
+}
+async function getTangoEventsForDateRange(
+  startDate: string,
+  endDate: string
+): Promise<CompleteEventData[]> {
+  try {
+    const specificEvents = await DatabaseService.getTangoEventsByDateRange(
+      startDate,
+      endDate
+    )
+
+    const recurringEvents = await getRecurringEventsForDateRange(
+      startDate,
+      endDate
+    )
+
+    const allEvents = [...specificEvents, ...recurringEvents]
+    const uniqueEvents = allEvents.filter(
+      (event, index, self) => self.findIndex(e => e.id === event.id) === index
+    )
+
+    return uniqueEvents.sort((a, b) => {
+      const dateA = a.date
+      const dateB = b.date
+      if (dateA !== dateB) {
+        return dateA.localeCompare(dateB)
+      }
+
+      const timeA = getEventSortTime(a)
+      const timeB = getEventSortTime(b)
+      return timeA.localeCompare(timeB)
+    })
+  } catch (error) {
+    console.error('Error getting tango events for date range:', error)
+    return []
+  }
+}
+async function getRecurringEventsForDate(
+  targetDate: string
+): Promise<CompleteEventData[]> {
+  try {
+    const allEvents = await DatabaseService.getTangoEventsByDateRange(
+      '2024-01-01',
+      '2030-12-31'
+    )
+    const recurringEvents = allEvents.filter(
+      event => event.has_weekly_recurrence
+    )
+
+    const targetDay = new Date(targetDate)
+    const targetDayOfWeek = targetDay.getDay() 
+
+    const eventsForDate: CompleteEventData[] = []
+
+    for (const event of recurringEvents) {
+      const eventDate = new Date(event.date)
+      const eventDayOfWeek = eventDate.getDay()
+
+      if (eventDayOfWeek === targetDayOfWeek) {
+        if (targetDay >= eventDate) {
+          eventsForDate.push({
+            ...event,
+            date: targetDate
+          })
+        }
+      }
+    }
+
+    return eventsForDate
+  } catch (error) {
+    console.error('Error getting recurring events for date:', error)
+    return []
+  }
+}
+
+async function getRecurringEventsForDateRange(
+  startDate: string,
+  endDate: string
+): Promise<CompleteEventData[]> {
+  try {
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    const eventsForRange: CompleteEventData[] = []
+
+    const allEvents = await DatabaseService.getTangoEventsByDateRange(
+      '2024-01-01',
+      '2030-12-31'
+    )
+    const recurringEvents = allEvents.filter(
+      event => event.has_weekly_recurrence
+    )
+
+    for (const event of recurringEvents) {
+      const eventStartDate = new Date(event.date)
+
+      const current = new Date(
+        Math.max(start.getTime(), eventStartDate.getTime())
+      )
+
+      while (current <= end) {
+        if (current.getDay() === eventStartDate.getDay()) {
+          eventsForRange.push({
+            ...event,
+            date: format(current, 'yyyy-MM-dd')
+          })
+        }
+        current.setDate(current.getDate() + 1)
+      }
+    }
+
+    return eventsForRange
+  } catch (error) {
+    console.error('Error getting recurring events for date range:', error)
+    return []
+  }
+}
+function groupEventsByDate(
+  events: CompleteEventData[]
+): Record<string, CompleteEventData[]> {
+  const grouped: Record<string, CompleteEventData[]> = {}
+
+  events.forEach(event => {
+    const date = event.date
+    if (!grouped[date]) {
+      grouped[date] = []
+    }
+    grouped[date].push(event)
+  })
+
+  Object.keys(grouped).forEach(date => {
+    grouped[date].sort((a, b) => {
+      const timeA = getEventSortTime(a)
+      const timeB = getEventSortTime(b)
+      return timeA.localeCompare(timeB)
+    })
+  })
+
+  return grouped
+}
+
+function getEventDisplayTime(event: CompleteEventData): string {
+  switch (event.event_type) {
+    case 'class':
+      if (event.classes && event.classes.length > 0) {
+        const times = event.classes.map(c => c.start_time).join(', ')
+        if (event.practice) {
+          return `${times} + Práctica ${event.practice.practice_time}`
+        }
+        return times
+      }
+      break
+
+    case 'milonga':
+      if (event.milonga_pre_class) {
+        return `Clase ${event.milonga_pre_class.class_time} + Milonga ${event.milonga_pre_class.milonga_start_time}`
+      }
+      if (event.classes && event.classes.length > 0) {
+        return event.classes[0].start_time
+      }
+      break
+
+    case 'special_event':
+    case 'seminar':
+      if (event.classes && event.classes.length > 0) {
+        return event.classes[0].start_time
+      }
+      break
+  }
+
+  return 'Sin horario'
+}
+
+function getEventSortTime(event: CompleteEventData): string {
+  switch (event.event_type) {
+    case 'class':
+      if (event.classes && event.classes.length > 0) {
+        return event.classes[0].start_time
+      }
+      break
+
+    case 'milonga':
+      if (event.milonga_pre_class) {
+        return event.milonga_pre_class.class_time
+      }
+      if (event.classes && event.classes.length > 0) {
+        return event.classes[0].start_time
+      }
+      break
+
+    case 'special_event':
+    case 'seminar':
+      if (event.classes && event.classes.length > 0) {
+        return event.classes[0].start_time
+      }
+      break
+  }
+
+  return '99:99' 
+}
+async function showEventDetails(phoneNumber: string, event: CompleteEventData) {
+  const primaryOrganizer = event.organizers?.find(org => org.is_primary)
+  const organizerName =
+    primaryOrganizer?.one_time_teacher_name ||
+    primaryOrganizer?.user?.name ||
+    'Por confirmar'
+
+  let message = `🎭 *${event.title}*\n\n`
 
   if (event.description) {
     message += `📝 *Descripción:*\n${event.description}\n\n`
   }
 
-  if (event.event_type) {
-    const eventTypeLabels: Record<string, string> = {
-      'class': 'Clase',
-      'milonga': 'Milonga',
-      'practice': 'Práctica',
-      'seminar': 'Seminario',
-      'special_event': 'Evento Especial'
-    }
-    message += `🎪 *Tipo:* ${eventTypeLabels[event.event_type] || event.event_type}\n`
+  const eventTypeLabels: Record<string, string> = {
+    class: 'Clase',
+    milonga: 'Milonga',
+    seminar: 'Seminario',
+    special_event: 'Evento Especial'
   }
+  message += `🎪 *Tipo:* ${
+    eventTypeLabels[event.event_type] || event.event_type
+  }\n`
 
-  if (event.class_level) {
+  message += `🏢 *Lugar:* ${event.venue_name}\n`
+
+  if (event.classes && event.classes.length > 0) {
     const levelLabels: Record<string, string> = {
-      'beginner': 'Principiante',
-      'intermediate': 'Intermedio',
-      'advanced': 'Avanzado',
-      'all_levels': 'Todos los niveles'
+      beginner: 'Principiante',
+      intermediate: 'Intermedio',
+      advanced: 'Avanzado',
+      all_levels: 'Todos los niveles'
     }
-    message += `📊 *Nivel:* ${levelLabels[event.class_level] || event.class_level}\n`
+
+    if (event.classes.length === 1) {
+      message += `🕒 *Horario:* ${event.classes[0].start_time}\n`
+      if (event.classes[0].class_level) {
+        message += `📊 *Nivel:* ${levelLabels[event.classes[0].class_level]}\n`
+      }
+    } else {
+      message += `🕒 *Horarios:*\n`
+      event.classes.forEach((cls, index) => {
+        message += `   Clase ${index + 1}: ${cls.start_time}`
+        if (cls.class_level) {
+          message += ` (${levelLabels[cls.class_level]})`
+        }
+        message += `\n`
+      })
+    }
   }
 
-  if (event.price !== undefined && event.price !== null) {
-    message += `💰 *Precio:* $${event.price}\n`
+  if (event.practice) {
+    message += `💃 *Práctica:* ${event.practice.practice_time}\n`
+  }
+
+  if (event.milonga_pre_class) {
+    message += `📚 *Clase previa:* ${event.milonga_pre_class.class_time}\n`
+    message += `🎵 *Milonga:* ${event.milonga_pre_class.milonga_start_time}\n`
+  }
+
+  if (event.show_description) {
+    message += `🎭 *Show:* ${event.show_description}\n`
+  }
+
+  if (event.pricing && event.pricing.length > 0) {
+    if (event.pricing.length === 1) {
+      const price = event.pricing[0]
+      message += `💰 *Precio:* ${
+        price.price === 0 ? 'Gratuito' : `$${price.price}`
+      }\n`
+    } else {
+      message += `💰 *Precios:*\n`
+      event.pricing.forEach(price => {
+        message += `   ${price.description}: ${
+          price.price === 0 ? 'Gratuito' : `$${price.price}`
+        }\n`
+      })
+    }
   } else {
     message += `💰 *Precio:* Consultar\n`
   }
 
-  if (teacher?.name) {
-    message += `👤 *Profesor:* ${teacher.name}\n`
-  } else {
-    message += `👤 *Profesor:* Por confirmar\n`
+  message += `👤 *Profesor/Organizador:* ${organizerName}\n`
+
+  if (event.has_weekly_recurrence) {
+    message += `🔄 *Se repite:* Semanalmente\n`
   }
 
-  if (schedule) {
-    if (schedule.start_time) {
-      message += `🕒 *Horario:* ${schedule.start_time}`
-      if (schedule.end_time) {
-        message += ` - ${schedule.end_time}`
-      }
-      message += `\n`
-    }
+  message += `📍 *Dirección:* ${event.address}\n`
 
-    if (schedule.recurrence_pattern && schedule.recurrence_pattern !== 'none') {
-      message += `🔄 *Recurrencia:* `
-      switch (schedule.recurrence_pattern) {
-        case 'weekly':
-          message += 'Semanal'
-          if (schedule.days_of_week && schedule.days_of_week.length > 0) {
-            const dayLabels: Record<string, string> = {
-              'monday': 'Lunes',
-              'tuesday': 'Martes', 
-              'wednesday': 'Miércoles',
-              'thursday': 'Jueves',
-              'friday': 'Viernes',
-              'saturday': 'Sábado',
-              'sunday': 'Domingo'
-            }
-            const days = schedule.days_of_week.map((day: string) => dayLabels[day] || day).join(', ')
-            message += ` (${days})`
-          }
-          break
-        case 'daily':
-          message += 'Diaria'
-          break
-        case 'monthly':
-          message += 'Mensual'
-          break
-        default:
-          message += schedule.recurrence_pattern
-      }
-      message += `\n`
-    }
-  }
-
-  if (event.address) {
-    message += `📍 *Dirección:* ${event.address}\n`
-  }
-
-  if (event.has_limited_capacity && event.max_capacity) {
-    const available = event.max_capacity - event.current_attendees
-    message += `👥 *Capacidad:* ${event.current_attendees}/${event.max_capacity} (${available} disponibles)\n`
+  if (event.contact_phone) {
+    message += `📞 *Contacto:* ${event.contact_phone}\n`
   }
 
   return WhatsAppService.sendTextMessage(phoneNumber, message)

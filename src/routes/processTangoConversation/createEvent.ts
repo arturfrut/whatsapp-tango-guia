@@ -6,7 +6,8 @@ import {
   EventType,
   ClassLevel
 } from '../../types/processTangoConversation'
-import { parseDate, parseTime } from './utils'
+import { getMainMenuMessage, parseDate, parseTime } from './utils'
+import { startOtherTeacherCreation } from './createTeacher'
 
 export const handleNewEventCreation = async (
   userStates: Map<string, ChatState>,
@@ -18,7 +19,7 @@ export const handleNewEventCreation = async (
   const normalizedMessage = messageContent.trim().toLowerCase()
 
   if (normalizedMessage === '0' || normalizedMessage === 'volver') {
-    return handleGoBack(userStates, phoneNumber)
+    return handleGoBack(userStates, tempData, phoneNumber)
   }
 
   if (normalizedMessage === 'salir' || normalizedMessage === 'cancelar') {
@@ -226,23 +227,45 @@ export const handleNewEventCreation = async (
         phoneNumber,
         messageContent
       )
-
     case ChatState.CREATE_EVENT_PRICING:
       return handleEventPricing(
         userStates,
         tempData,
         phoneNumber,
-        messageContent
+        normalizedMessage
+      )
+
+    case ChatState.CREATE_EVENT_PRICING_TYPE:
+      return handleEventPricingType(
+        userStates,
+        tempData,
+        phoneNumber,
+        normalizedMessage
       )
 
     case ChatState.CREATE_EVENT_PRICING_DETAILS:
-      return handleEventPricingDetails(
+      return handleEventPricingDetail(
         userStates,
         tempData,
         phoneNumber,
         messageContent
       )
 
+    case ChatState.CREATE_EVENT_PRICING_AMOUNT:
+      return handleEventPricingAmount(
+        userStates,
+        tempData,
+        phoneNumber,
+        messageContent
+      )
+
+    case ChatState.CREATE_EVENT_PRICING_ADD_MORE:
+      return handleEventPricingAddMore(
+        userStates,
+        tempData,
+        phoneNumber,
+        normalizedMessage
+      )
     case ChatState.CREATE_EVENT_CONFIRMATION:
       return handleEventConfirmation(
         userStates,
@@ -252,6 +275,8 @@ export const handleNewEventCreation = async (
       )
 
     default:
+      console.log(`❌ Hit default case with state: "${currentState}"`)
+
       return WhatsAppService.sendTextMessage(
         phoneNumber,
         `😅 Algo salió mal, volvamos a empezar.`
@@ -304,15 +329,20 @@ async function handleSpecialMenuOptions(
 
 _Envía "0" para volver o "salir" para cancelar_`
     )
-  } else if (['5', 'modificar'].includes(normalizedMessage)) {
+  } else if (['5', 'crear profesor', 'profesor'].includes(normalizedMessage)) {
+    return startOtherTeacherCreation(userStates, phoneNumber)
+  } else if (['6', 'modificar'].includes(normalizedMessage)) {
     return WhatsAppService.sendTextMessage(
       phoneNumber,
       `🛠️ Modificar evento (en desarrollo)...`
     )
+  } else if (['0', 'volver', 'salir'].includes(normalizedMessage)) {
+    userStates.set(phoneNumber, ChatState.MAIN_MENU)
+    return WhatsAppService.sendTextMessage(phoneNumber, getMainMenuMessage())
   } else {
     return WhatsAppService.sendTextMessage(
       phoneNumber,
-      `❓ Opción inválida. Elegí una opción del menú (1-5).`
+      `❓ Opción inválida. Elegí una opción del menú (1-6) o "0" para volver al menú principal.`
     )
   }
 }
@@ -1042,10 +1072,11 @@ _Envía "0" para volver_`
 
 async function handleGoBack(
   userStates: Map<string, ChatState>,
+    tempData: Map<string, NewEventData>,
   phoneNumber: string
 ) {
   const currentState = userStates.get(phoneNumber)
-
+const eventData = tempData.get(phoneNumber) 
   const backTransitions: Partial<Record<ChatState, ChatState>> = {
     [ChatState.CREATE_EVENT_TITLE]: ChatState.SPECIAL_MENU,
     [ChatState.CREATE_EVENT_VENUE]: ChatState.CREATE_EVENT_TITLE,
@@ -1081,35 +1112,81 @@ async function handleGoBack(
     [ChatState.CREATE_EVENT_REMINDER_NUMBER]: ChatState.CREATE_EVENT_REMINDER,
     [ChatState.CREATE_EVENT_DESCRIPTION]: ChatState.CREATE_EVENT_REMINDER,
     [ChatState.CREATE_EVENT_PRICING]: ChatState.CREATE_EVENT_DESCRIPTION,
-    [ChatState.CREATE_EVENT_PRICING_DETAILS]: ChatState.CREATE_EVENT_PRICING,
-    [ChatState.CREATE_EVENT_CONFIRMATION]: ChatState.CREATE_EVENT_PRICING
+    [ChatState.CREATE_EVENT_PRICING_TYPE]: ChatState.CREATE_EVENT_PRICING,
+    [ChatState.CREATE_EVENT_PRICING_DETAILS]:
+      ChatState.CREATE_EVENT_PRICING_TYPE,
+    [ChatState.CREATE_EVENT_PRICING_AMOUNT]:
+      ChatState.CREATE_EVENT_PRICING_DETAILS,
+    [ChatState.CREATE_EVENT_PRICING_ADD_MORE]:
+      ChatState.CREATE_EVENT_PRICING_AMOUNT,
+    [ChatState.CREATE_EVENT_CONFIRMATION]:
+      ChatState.CREATE_EVENT_PRICING_ADD_MORE
   }
+
 
   const previousState = backTransitions[currentState!]
 
   if (previousState) {
     userStates.set(phoneNumber, previousState)
-    return showStateMessage(userStates, phoneNumber, previousState)
+    return showStateMessage(userStates, tempData, phoneNumber, previousState)
   } else {
     userStates.set(phoneNumber, ChatState.SPECIAL_MENU)
     return showSpecialMenu(userStates, phoneNumber)
   }
 }
-
 async function showStateMessage(
   userStates: Map<string, ChatState>,
+  tempData: Map<string, NewEventData>,
   phoneNumber: string,
   state: ChatState
 ): Promise<any> {
+  const eventData = tempData.get(phoneNumber)
+
   switch (state) {
     case ChatState.SPECIAL_MENU:
       return showSpecialMenu(userStates, phoneNumber)
+      
     case ChatState.CREATE_EVENT_TITLE:
-      return WhatsAppService.sendTextMessage(
-        phoneNumber,
-        `📝 ¿Cuál es el título del evento?\n\n*Ejemplo:* "Clase de Tango Principiantes"\n\n_Envía "0" para volver_`
-      )
-    // Agregar más casos según necesidad
+      let titleMsg = `📝 ¿Cuál es el título del evento?`
+      if (eventData?.title) {
+        titleMsg += `\n\n*Actual:* ${eventData.title}`
+      }
+      titleMsg += `\n\n*Ejemplo:* "Clase de Tango Principiantes"\n\n_Envía "0" para volver_`
+      return WhatsAppService.sendTextMessage(phoneNumber, titleMsg)
+      
+    case ChatState.CREATE_EVENT_VENUE:
+      let venueMsg = `🏢 ¿Cuál es el nombre del lugar?`
+      if (eventData?.venue_name) {
+        venueMsg += `\n\n*Actual:* ${eventData.venue_name}`
+      }
+      venueMsg += `\n\n*Ejemplo:* "UADE" o "Centro Cultural"\n\n_Envía "0" para volver_`
+      return WhatsAppService.sendTextMessage(phoneNumber, venueMsg)
+      
+    case ChatState.CREATE_EVENT_ADDRESS:
+      let addressMsg = `📍 ¿Cuál es la dirección completa?`
+      if (eventData?.address) {
+        addressMsg += `\n\n*Actual:* ${eventData.address}`
+      }
+      addressMsg += `\n\n*Ejemplo:* "Magallanes 2025, Mar del Plata"\n\n_Envía "0" para volver_`
+      return WhatsAppService.sendTextMessage(phoneNumber, addressMsg)
+      
+    case ChatState.CREATE_EVENT_DATE:
+      let dateMsg = `📅 ¿Qué fecha?`
+      if (eventData?.date) {
+        dateMsg += `\n\n*Actual:* ${eventData.date}`
+      }
+      dateMsg += `\n\n*Formatos:*\n• 15/12/2024\n• 15-12-2024\n• 15 de diciembre\n• mañana\n• hoy\n\n_Envía "0" para volver_`
+      return WhatsAppService.sendTextMessage(phoneNumber, dateMsg)
+      
+    case ChatState.CREATE_CLASS_TIME:
+      let timeMsg = `🕐 ¿A qué hora es la clase?`
+      if (eventData?.classes && eventData.classes[eventData.current_class_index || 0]?.start_time) {
+        timeMsg += `\n\n*Actual:* ${eventData.classes[eventData.current_class_index || 0].start_time}`
+      }
+      timeMsg += `\n\n*Formato:* 20:30\n\n_Envía "0" para volver_`
+      return WhatsAppService.sendTextMessage(phoneNumber, timeMsg)
+      
+    // Agregar más casos según necesidad...
     default:
       return showSpecialMenu(userStates, phoneNumber)
   }
@@ -1144,10 +1221,12 @@ export const showSpecialMenu = async (
 2 - Crear *milonga*
 3 - Crear *seminario*
 4 - Crear *evento especial*
-5 - Modificar un *evento*`
+5 - Crear *profesor* (otra persona)
+6 - Modificar un *evento*
+
+0 - Volver al menú principal`
   )
 }
-
 // Organizer self handler
 async function handleOrganizerSelf(
   userStates: Map<string, ChatState>,
@@ -1645,7 +1724,6 @@ _Envía "0" para volver_`
 async function handleEventDescription(
   userStates: Map<string, ChatState>,
   tempData: Map<string, NewEventData>,
-
   phoneNumber: string,
   messageContent: string
 ) {
@@ -1679,64 +1757,291 @@ _Envía "0" para volver_`
 async function handleEventPricing(
   userStates: Map<string, ChatState>,
   tempData: Map<string, NewEventData>,
+  phoneNumber: string,
+  normalizedMessage: string
+) {
+  if (!normalizedMessage) {
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `💰 *Precios* *(opcional)*
 
+¿Quieres agregar información de precios?
+
+1 - Sí, agregar precios
+2 - No, omitir precios
+
+_Envía "0" para volver_`
+    )
+  }
+
+  if (['1', 'si', 'sí', 'agregar'].includes(normalizedMessage)) {
+    userStates.set(phoneNumber, ChatState.CREATE_EVENT_PRICING_TYPE)
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `💰 ¿Quieres poner un único precio o una lista de precios?
+
+1 - Un único precio
+2 - Lista de precios
+
+_Envía "0" para volver_`
+    )
+  } else if (['2', 'no', 'omitir', '.'].includes(normalizedMessage)) {
+    userStates.set(phoneNumber, ChatState.CREATE_EVENT_CONFIRMATION)
+    return showEventConfirmation(phoneNumber, tempData)
+  } else {
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `❓ Por favor responde:
+
+1 - Sí, agregar precios
+2 - No, omitir precios
+
+_Envía "0" para volver_`
+    )
+  }
+}
+async function handleEventPricingType(
+  userStates: Map<string, ChatState>,
+  tempData: Map<string, NewEventData>,
+  phoneNumber: string,
+  normalizedMessage: string
+) {
+  console.log(
+    `🛠️ handleEventPricingType - Phone: ${phoneNumber}, Message: "${normalizedMessage}"`
+  )
+
+  if (!normalizedMessage) {
+    console.log('📋 Showing pricing type options (first time)')
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `💰 ¿Quieres poner un único precio o una lista de precios?
+
+1 - Un único precio
+2 - Lista de precios
+
+_Envía "0" para volver_`
+    )
+  }
+
+  console.log(`💡 Processing user selection: "${normalizedMessage}"`)
+
+  // Procesar respuesta del usuario
+  if (['1', 'unico', 'único', 'uno'].includes(normalizedMessage)) {
+    console.log('✅ User selected option 1 - único precio')
+
+    userStates.set(phoneNumber, ChatState.CREATE_EVENT_PRICING_DETAILS)
+    console.log(`🔄 State changed to: ${userStates.get(phoneNumber)}`)
+
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `💰 *Precio único*
+
+¿Cuál es el detalle del precio?
+
+*Ejemplos:*
+- "Solo clase principiante"
+- "Clase + práctica"
+- "Entrada general"
+- "Estudiantes"
+
+_Envía "0" para volver_`
+    )
+  } else if (
+    ['2', 'lista', 'precios', 'varios', 'recomendado'].includes(
+      normalizedMessage
+    )
+  ) {
+    console.log('✅ User selected option 2 - lista de precios')
+
+    userStates.set(phoneNumber, ChatState.CREATE_EVENT_PRICING_DETAILS)
+    console.log(`🔄 State changed to: ${userStates.get(phoneNumber)}`)
+
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `💰 *Primer precio*
+
+¿Cuál es el detalle del primer precio?
+
+*Ejemplos:*
+- "Solo clase principiante"  
+- "Clase + práctica"
+- "Entrada general"
+- "Estudiantes"
+
+_Envía "0" para volver_`
+    )
+  } else {
+    console.log('❌ Invalid option selected')
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `❓ Por favor responde:
+
+1 - Un único precio
+2 - Lista de precios
+
+_Envía "0" para volver_`
+    )
+  }
+}
+
+async function handleEventPricingDetail(
+  userStates: Map<string, ChatState>,
+  tempData: Map<string, NewEventData>,
+  phoneNumber: string,
+  messageContent: string
+) {
+  if (messageContent.trim().length < 2) {
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `❌ El detalle debe ser más específico.
+
+*Ejemplos:*
+• "Solo clase principiante"
+• "Clase + práctica"
+• "Entrada general"
+
+_Envía "0" para volver_`
+    )
+  }
+
+  const eventData = tempData.get(phoneNumber)!
+
+  // Inicializar pricing array si no existe
+  if (!eventData.pricing) {
+    eventData.pricing = []
+  }
+
+  // Guardar el detalle temporalmente
+  eventData.temp_pricing_detail = messageContent.trim()
+  tempData.set(phoneNumber, eventData)
+
+  userStates.set(phoneNumber, ChatState.CREATE_EVENT_PRICING_AMOUNT)
+
+  return WhatsAppService.sendTextMessage(
+    phoneNumber,
+    `✅ Detalle: *${messageContent.trim()}*
+
+¿Cuál es el precio?
+
+*Formato:* Solo el número
+*Ejemplo:* 5000
+
+Escribe "gratis" para precio gratuito
+
+_Envía "0" para volver_`
+  )
+}
+
+async function handleEventPricingAmount(
+  userStates: Map<string, ChatState>,
+  tempData: Map<string, NewEventData>,
   phoneNumber: string,
   messageContent: string
 ) {
   const eventData = tempData.get(phoneNumber)!
-
-  if (!messageContent) {
-    let pricingMessage = `💰 *Precios* *(opcional)*\n\n`
-
-    if (eventData.event_type === 'class' && eventData.practice) {
-      pricingMessage += `Tienes clase y práctica. ¿Cómo se cobra?\n\n`
-      pricingMessage += `1 - Solo clase\n`
-      pricingMessage += `2 - Solo práctica\n`
-      pricingMessage += `3 - Clase y práctica\n`
-      pricingMessage += `4 - . (sin precios)\n`
-    } else if (eventData.event_type === 'milonga' && eventData.pre_class) {
-      pricingMessage += `Tienes clase previa y milonga. ¿Cómo se cobra?\n\n`
-      pricingMessage += `1 - Solo clase previa\n`
-      pricingMessage += `2 - Solo milonga\n`
-      pricingMessage += `3 - Clase y milonga\n`
-      pricingMessage += `4 - . (sin precios)\n`
-    } else {
-      pricingMessage += `¿Cuál es el precio?\n\n`
-      pricingMessage += `*Formato:* Solo el número\n`
-      pricingMessage += `*Ejemplo:* 5000\n\n`
-      pricingMessage += `Escribe "gratis" o "." para omitir\n`
-    }
-
-    pricingMessage += `\n_Envía "0" para volver_`
-
-    return WhatsAppService.sendTextMessage(phoneNumber, pricingMessage)
-  }
-
   const normalizedMessage = messageContent.trim().toLowerCase()
 
-  if (eventData.event_type === 'class' && eventData.practice) {
-    return handleClassWithPracticePricing(
-      userStates,
-      tempData,
-      phoneNumber,
-      normalizedMessage,
-      eventData
-    )
-  } else if (eventData.event_type === 'milonga' && eventData.pre_class) {
-    return handleMilongaWithClassPricing(
-      userStates,
-      tempData,
-      phoneNumber,
-      normalizedMessage,
-      eventData
-    )
+  let price = 0
+  let priceDescription = eventData.temp_pricing_detail!
+
+  if (['gratis','Gratis' , 'gratuito', 'free', '0'].includes(normalizedMessage)) {
+    price = 0
+    priceDescription += ' - Gratuito'
   } else {
-    return handleSimplePricing(
-      userStates,
-      tempData,
+    const parsedPrice = parseFloat(normalizedMessage.replace(/[^\d.]/g, ''))
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      return WhatsAppService.sendTextMessage(
+        phoneNumber,
+        `❌ Precio inválido.
+
+*Formato:* Solo el número
+*Ejemplo:* 5000
+
+O escribe "gratis" para precio gratuito
+
+_Envía "0" para volver_`
+      )
+    }
+    price = parsedPrice
+  }
+
+  // Agregar el precio al array
+  eventData.pricing!.push({
+    price_type: 'custom',
+    price: price,
+    description: priceDescription
+  })
+
+  // Limpiar datos temporales
+  delete eventData.temp_pricing_detail
+  tempData.set(phoneNumber, eventData)
+
+  userStates.set(phoneNumber, ChatState.CREATE_EVENT_PRICING_ADD_MORE)
+  return handleEventPricingAddMore(userStates, tempData, phoneNumber, '')
+}
+
+async function handleEventPricingAddMore(
+  userStates: Map<string, ChatState>,
+  tempData: Map<string, NewEventData>,
+  phoneNumber: string,
+  normalizedMessage: string
+) {
+  const eventData = tempData.get(phoneNumber)!
+
+  if (!normalizedMessage) {
+    const currentPrices = eventData.pricing || []
+    let pricesSummary = ''
+
+    if (currentPrices.length > 0) {
+      pricesSummary = '\n*Precios agregados:*\n'
+      currentPrices.forEach((p, index) => {
+        pricesSummary += `${index + 1}. ${p.description}: ${
+          p.price === 0 ? 'Gratuito' : `$${p.price}`
+        }\n`
+      })
+    }
+
+    return WhatsAppService.sendTextMessage(
       phoneNumber,
-      normalizedMessage,
-      eventData
+      `${pricesSummary}
+¿Deseas agregar otro precio?
+
+1 - Sí, agregar otro precio
+2 - No, continuar con el evento
+
+_Envía "0" para volver_`
+    )
+  }
+
+  if (['1', 'si', 'sí', 'agregar', 'otro'].includes(normalizedMessage)) {
+    userStates.set(phoneNumber, ChatState.CREATE_EVENT_PRICING_DETAILS)
+
+    const priceNumber = (eventData.pricing?.length || 0) + 1
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `💰 *Precio ${priceNumber}*
+
+¿Cuál es el detalle de este precio?
+
+*Ejemplos:*
+• "Solo milonga"
+• "Descuento estudiantes"
+• "Pase completo"
+
+_Envía "0" para volver_`
+    )
+  } else if (['2', 'no', 'continuar'].includes(normalizedMessage)) {
+    userStates.set(phoneNumber, ChatState.CREATE_EVENT_CONFIRMATION)
+    return showEventConfirmation(phoneNumber, tempData)
+  } else {
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `❓ Por favor responde:
+
+1 - Sí, agregar otro precio
+2 - No, continuar
+
+_Envía "0" para volver_`
     )
   }
 }
@@ -1885,7 +2190,7 @@ async function handleSimplePricing(
   if (['.', 'sin precios', 'omitir'].includes(normalizedMessage)) {
     userStates.set(phoneNumber, ChatState.CREATE_EVENT_CONFIRMATION)
     return showEventConfirmation(phoneNumber, tempData)
-  } else if (['gratis', 'gratuito', 'free', '0'].includes(normalizedMessage)) {
+  } else if (['gratis','Gratis', 'gratuito', 'free', '0'].includes(normalizedMessage)) {
     eventData.pricing!.push({
       price_type: 'general',
       price: 0,
@@ -1928,88 +2233,6 @@ _Envía "0" para volver_`
   }
 }
 
-async function handleEventPricingDetails(
-  userStates: Map<string, ChatState>,
-  tempData: Map<string, NewEventData>,
-
-  phoneNumber: string,
-  messageContent: string
-) {
-  const eventData = tempData.get(phoneNumber)!
-  const normalizedMessage = messageContent.trim().toLowerCase()
-
-  if (['gratis', 'gratuito', 'free', '0'].includes(normalizedMessage)) {
-    const pricingType = eventData.temp_pricing_type! as
-      | 'class_only'
-      | 'practice_only'
-      | 'class_and_practice'
-      | 'milonga_only'
-      | 'class_and_milonga'
-    const descriptionMap: Record<typeof pricingType, string> = {
-      class_only: 'Solo clase',
-      practice_only: 'Solo práctica',
-      class_and_practice: 'Clase y práctica',
-      milonga_only: 'Solo milonga',
-      class_and_milonga: 'Clase y milonga'
-    }
-    const description = descriptionMap[pricingType] || 'General'
-
-    eventData.pricing!.push({
-      price_type: pricingType,
-      price: 0,
-      description: `${description} - Gratuito`
-    })
-
-    delete eventData.temp_pricing_type
-    tempData.set(phoneNumber, eventData)
-    userStates.set(phoneNumber, ChatState.CREATE_EVENT_CONFIRMATION)
-    return showEventConfirmation(phoneNumber, tempData)
-  } else {
-    const price = parseFloat(normalizedMessage.replace(/[^\d.]/g, ''))
-    if (isNaN(price) || price < 0) {
-      return WhatsAppService.sendTextMessage(
-        phoneNumber,
-        `❌ Precio inválido.
-
-*Formato:* Solo el número
-*Ejemplo:* 5000
-
-O escribe "gratis" para precio gratuito
-
-_Envía "0" para volver_`
-      )
-    }
-
-    const pricingType = eventData.temp_pricing_type! as
-      | 'class_only'
-      | 'practice_only'
-      | 'class_and_practice'
-      | 'milonga_only'
-      | 'class_and_milonga'
-    const descriptionMap: Record<typeof pricingType, string> = {
-      class_only: 'Solo clase',
-      practice_only: 'Solo práctica',
-      class_and_practice: 'Clase y práctica',
-      milonga_only: 'Solo milonga',
-      class_and_milonga: 'Clase y milonga'
-    }
-    const description = descriptionMap[pricingType] || 'General'
-
-    eventData.pricing!.push({
-      price_type: pricingType,
-      price: price,
-      description: description
-    })
-
-    delete eventData.temp_pricing_type
-    delete eventData.temp_organizer_search
-    delete eventData.temp_organizer_results
-    
-    tempData.set(phoneNumber, eventData)
-    userStates.set(phoneNumber, ChatState.CREATE_EVENT_CONFIRMATION)
-    return showEventConfirmation(phoneNumber, tempData)
-  }
-}
 
 async function showEventConfirmation(
   phoneNumber: string,

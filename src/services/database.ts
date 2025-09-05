@@ -72,6 +72,68 @@ export class DatabaseService {
     }
   }
 
+   static async createTeacherProfile(
+    phoneNumber: string,
+    teacherData: {
+      name: string;
+      details?: string;
+    }
+  ): Promise<User | null> {
+    try {
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('phone_number', phoneNumber)
+        .single();
+
+      if (existingUser) {
+        const { data: updatedUser, error: updateError } = await supabase
+          .from('users')
+          .update({
+            role: 'teacher',
+            name: teacherData.name,
+            details: teacherData.details,
+            is_active: true,
+            updated_at: new Date().toISOString()
+          })
+          .eq('phone_number', phoneNumber)
+          .select()
+          .single();
+
+        if (updateError) {
+          console.error('❌ Error updating user to teacher:', updateError);
+          return null;
+        }
+
+        console.log(`✅ User updated to teacher: ${phoneNumber}`);
+        return updatedUser;
+      } else {
+        const { data: newTeacher, error: createError } = await supabase
+          .from('users')
+          .insert({
+            phone_number: phoneNumber,
+            role: 'teacher',
+            name: teacherData.name,
+            details: teacherData.details,
+            is_active: true
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('❌ Error creating teacher:', createError);
+          return null;
+        }
+
+        console.log(`✅ Teacher created: ${phoneNumber}`);
+        return newTeacher;
+      }
+    } catch (error) {
+      console.error('❌ Error in createTeacherProfile:', error);
+      return null;
+    }
+  }
+
   static async createTeacher(
     phoneNumber: string,
     teacherData: {
@@ -80,6 +142,8 @@ export class DatabaseService {
       details: string;
     }
   ): Promise<User | null> {
+    console.warn('⚠️ Using legacy createTeacher method. Please migrate to createTeacherProfile.');
+    
     try {
       const saltRounds = 10;
       const passwordHash = await bcrypt.hash(teacherData.password, saltRounds);
@@ -430,7 +494,7 @@ export class DatabaseService {
         .from('event_organizers')
         .select(`
           *,
-          users:user_id (
+          user:user_id (
             id,
             name,
             phone_number

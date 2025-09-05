@@ -20,26 +20,19 @@ export function parseDate(dateInput: string): string | null {
       const month = parseInt(match1[2], 10)
       const year = parseInt(match1[3], 10)
 
-      if (isValidDate(day, month, year)) {
-        return `${year}-${month.toString().padStart(2, '0')}-${day
-          .toString()
-          .padStart(2, '0')}`
+      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 2024) {
+        const testDate = new Date(year, month - 1, day)
+        if (testDate.getFullYear() === year && 
+            testDate.getMonth() === month - 1 && 
+            testDate.getDate() === day) {
+          return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
+        }
       }
     }
 
     const monthNames: Record<string, number> = {
-      enero: 1,
-      febrero: 2,
-      marzo: 3,
-      abril: 4,
-      mayo: 5,
-      junio: 6,
-      julio: 7,
-      agosto: 8,
-      septiembre: 9,
-      octubre: 10,
-      noviembre: 11,
-      diciembre: 12
+      enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
+      julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12
     }
 
     const dateRegex2 = /^(\d{1,2})\s+de\s+(\w+)$/
@@ -49,10 +42,11 @@ export function parseDate(dateInput: string): string | null {
       const monthName = match2[2].toLowerCase()
       const month = monthNames[monthName]
 
-      if (month && isValidDate(day, month, today.getFullYear())) {
-        return `${today.getFullYear()}-${month
-          .toString()
-          .padStart(2, '0')}-${day.toString().padStart(2, '0')}`
+      if (month && day >= 1 && day <= 31) {
+        const testDate = new Date(today.getFullYear(), month - 1, day)
+        if (testDate.getDate() === day) {
+          return `${today.getFullYear()}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
+        }
       }
     }
 
@@ -62,7 +56,6 @@ export function parseDate(dateInput: string): string | null {
     return null
   }
 }
-
 export function parseTime(timeInput: string): string | null {
   try {
     const normalizedInput = timeInput.toLowerCase().trim()

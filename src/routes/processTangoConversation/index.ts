@@ -1,9 +1,16 @@
 import { WhatsAppService } from '../../services/whatsapp'
 import { DatabaseService } from '../../services/database'
-import { ChatState, TempEventData, NewEventData } from '../../types/processTangoConversation'
+import {
+  ChatState,
+  TempEventData,
+  NewEventData
+} from '../../types/processTangoConversation'
 import { getMainMenuMessage } from './utils'
 import { caseToday, caseWeek, handleEventSelection } from './showEvents'
-import { handleTeacherCreation } from './createTeacher'
+import {
+  handleTeacherCreation,
+  startTeacherCreation,
+} from './createTeacher'
 import { handleNewEventCreation, showSpecialMenu } from './createEvent'
 
 const secretWord = process.env.SECRETWORD
@@ -23,33 +30,44 @@ export async function handleConversation(
     try {
       const existingUser = await DatabaseService.getUserByPhone(phoneNumber)
 
-      if (existingUser && existingUser.role !== 'normal_query') {
+      if (existingUser && existingUser.role === 'teacher') {
         console.log(
-          `Usuario conocido detectado: ${existingUser.name} (${existingUser.role})`
+          `Usuario profesor conocido detectado: ${existingUser.name} (${existingUser.role})`
         )
-        return showSpecialMenu(userStates, phoneNumber)
-      } else {
-        userStates.set(phoneNumber, ChatState.SECRET_CODE)
-        return WhatsAppService.sendTextMessage(
+        const welcomeName = existingUser.name || 'Profesor'
+        await WhatsAppService.sendTextMessage(
           phoneNumber,
-          `🔐 ¡Accediste al menú secreto!
-
-¿Eres un nuevo profesor?
-1 - Sí
-2 - No`
+          `¡Hola! ${welcomeName} Entraste al menú secreto`
         )
+        return showSpecialMenuWithCreateTeacher(userStates, phoneNumber)
+      } else if (existingUser && existingUser.role !== 'normal_query') {
+        console.log(
+          `Usuario especial detectado: ${existingUser.name} (${existingUser.role})`
+        )
+        const welcomeName = existingUser.name || 'Usuario'
+        await WhatsAppService.sendTextMessage(
+          phoneNumber,
+          `¡Hola! ${welcomeName} Entraste al menú secreto`
+        )
+        return showSpecialMenuWithCreateTeacher(userStates, phoneNumber)
+      } else {
+        // Primera vez que entra o usuario normal
+        console.log(
+          'Primera vez que entra o usuario normal, creando perfil de profesor'
+        )
+        await WhatsAppService.sendTextMessage(
+          phoneNumber,
+          `¡Hola! Es la primera vez que entras, vamos a crear tu usuario.`
+        )
+        return startTeacherCreation(userStates, phoneNumber)
       }
     } catch (error) {
       console.error('Error verificando usuario existente:', error)
-      userStates.set(phoneNumber, ChatState.SECRET_CODE)
-      return WhatsAppService.sendTextMessage(
+      await WhatsAppService.sendTextMessage(
         phoneNumber,
-        `🔐 ¡Accediste al menú secreto!
-
-¿Eres un nuevo profesor?
-1 - Sí
-2 - No`
+        `¡Hola! Es la primera vez que entras, vamos a crear tu usuario.`
       )
+      return startTeacherCreation(userStates, phoneNumber)
     }
   }
 
@@ -72,16 +90,15 @@ export async function handleConversation(
         normalizedMessage
       )
 
-    case ChatState.SECRET_CODE:
-      return handleSecretCode(userStates, phoneNumber, normalizedMessage)
-
     case ChatState.NEW_TEACHER_NAME:
-    case ChatState.NEW_TEACHER_PASSWORD:
     case ChatState.NEW_TEACHER_DETAILS:
     case ChatState.NEW_TEACHER_CONFIRMATION:
+    case ChatState.CREATE_OTHER_TEACHER_PHONE:
+    case ChatState.CREATE_OTHER_TEACHER_NAME:
+    case ChatState.CREATE_OTHER_TEACHER_DETAILS:
+    case ChatState.CREATE_OTHER_TEACHER_CONFIRMATION:
       return handleTeacherCreation(userStates, phoneNumber, messageContent)
 
-    // NEW EVENT CREATION STATES
     case ChatState.SPECIAL_MENU:
     case ChatState.CREATE_EVENT_TITLE:
     case ChatState.CREATE_EVENT_VENUE:
@@ -111,7 +128,10 @@ export async function handleConversation(
     case ChatState.CREATE_EVENT_REMINDER_NUMBER:
     case ChatState.CREATE_EVENT_DESCRIPTION:
     case ChatState.CREATE_EVENT_PRICING:
-    case ChatState.CREATE_EVENT_PRICING_DETAILS:
+    case ChatState.CREATE_EVENT_PRICING_TYPE:
+    case ChatState.CREATE_EVENT_PRICING_DETAILS: 
+    case ChatState.CREATE_EVENT_PRICING_AMOUNT: 
+    case ChatState.CREATE_EVENT_PRICING_ADD_MORE:
     case ChatState.CREATE_EVENT_CONFIRMATION:
       return handleNewEventCreation(
         userStates,
@@ -128,22 +148,24 @@ export async function handleConversation(
   }
 }
 
-async function handleSecretCode(
+export const showSpecialMenuWithCreateTeacher = async (
   userStates: Map<string, ChatState>,
-  phoneNumber: string,
-  normalizedMessage: string
-) {
-  if (['1', 'sí', 'si', 'yes'].includes(normalizedMessage)) {
-    userStates.set(phoneNumber, ChatState.NEW_TEACHER_NAME)
-    return handleTeacherCreation(userStates, phoneNumber, '')
-  } else if (['2', 'no'].includes(normalizedMessage)) {
-    return showSpecialMenu(userStates, phoneNumber)
-  } else {
-    return WhatsAppService.sendTextMessage(
-      phoneNumber,
-      `Opción inválida. ¿Eres un nuevo profesor?\n1 - Sí\n2 - No`
-    )
-  }
+  phoneNumber: string
+) => {
+  userStates.set(phoneNumber, ChatState.SPECIAL_MENU)
+  return WhatsAppService.sendTextMessage(
+    phoneNumber,
+    `📋 ¿Qué te gustaría hacer?
+
+1 - Crear *clase*
+2 - Crear *milonga*
+3 - Crear *seminario*
+4 - Crear *evento especial*
+5 - Crear *profesor* (otra persona)
+6 - Modificar un *evento*
+
+0 - Volver al menú principal`
+  )
 }
 
 async function handleMainMenuOptions(

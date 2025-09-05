@@ -11,13 +11,15 @@ export enum ChatState {
   NEW_TEACHER = 'NEW_TEACHER',
   SPECIAL_MENU = 'SPECIAL_MENU',
 
-  // Estados para crear nuevo profesor
   NEW_TEACHER_NAME = 'NEW_TEACHER_NAME',
-  NEW_TEACHER_PASSWORD = 'NEW_TEACHER_PASSWORD',
-  NEW_TEACHER_DETAILS = 'NEW_TEACHER_DETAILS',
+  NEW_TEACHER_DETAILS = 'NEW_TEACHER_DETAILS', // Eliminamos NEW_TEACHER_PASSWORD
   NEW_TEACHER_CONFIRMATION = 'NEW_TEACHER_CONFIRMATION',
 
-  // Estados para crear eventos - nuevos
+  CREATE_OTHER_TEACHER_PHONE = 'CREATE_OTHER_TEACHER_PHONE',
+  CREATE_OTHER_TEACHER_NAME = 'CREATE_OTHER_TEACHER_NAME',
+  CREATE_OTHER_TEACHER_DETAILS = 'CREATE_OTHER_TEACHER_DETAILS',
+  CREATE_OTHER_TEACHER_CONFIRMATION = 'CREATE_OTHER_TEACHER_CONFIRMATION',
+
   CREATE_EVENT_TYPE = 'CREATE_EVENT_TYPE',
   CREATE_EVENT_TITLE = 'CREATE_EVENT_TITLE',
   CREATE_EVENT_VENUE = 'CREATE_EVENT_VENUE',
@@ -64,13 +66,17 @@ export enum ChatState {
   CREATE_EVENT_REMINDER_NUMBER = 'CREATE_EVENT_REMINDER_NUMBER',
   CREATE_EVENT_DESCRIPTION = 'CREATE_EVENT_DESCRIPTION',
   CREATE_EVENT_PRICING = 'CREATE_EVENT_PRICING',
+  CREATE_EVENT_PRICING_TYPE = 'CREATE_EVENT_PRICING_TYPE',
   CREATE_EVENT_PRICING_DETAILS = 'CREATE_EVENT_PRICING_DETAILS',
+  CREATE_EVENT_PRICING_AMOUNT = 'CREATE_EVENT_PRICING_AMOUNT',
+  CREATE_EVENT_PRICING_ADD_MORE = 'CREATE_EVENT_PRICING_ADD_MORE',
   CREATE_EVENT_CONFIRMATION = 'CREATE_EVENT_CONFIRMATION'
 }
+
 export interface NewTeacherData {
   name?: string
-  password?: string
   details?: string
+  phone?: string 
 }
 
 export type ClassLevel = 'beginner' | 'intermediate' | 'advanced' | 'all_levels'
@@ -248,6 +254,7 @@ export interface NewEventData {
   current_class_index?: number
   current_seminar_day?: number
   temp_organizer_search?: string
+  temp_pricing_detail?: string
   temp_pricing_type?:
     | 'class_only'
     | 'practice_only'
@@ -275,7 +282,7 @@ export interface User {
   phone_number: string
   role: UserRole
   name?: string
-  password_hash?: string
+  password_hash?: string // Mantenemos el campo pero no lo usamos en creación
   details?: string
   is_active: boolean
   created_at: string

@@ -3,7 +3,9 @@ import { Request, Response, Router } from 'express';
 import { WhatsAppService } from '../services/whatsapp';
 import { WhatsAppIncomingMessage, WhatsAppWebhookEntry } from '../types';
 import { normalizePhoneNumber } from '../utils/normalizePhoneNumber';
-import { handleConversation } from './processTangoConversation';
+// import { handleConversation } from './processTangoConversation';
+import { handleConversation } from './ConversationRouter';
+
 import { DatabaseService } from '../services/database';
 
 const router = Router();

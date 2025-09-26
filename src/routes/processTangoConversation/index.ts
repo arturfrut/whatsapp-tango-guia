@@ -1,9 +1,11 @@
 import { WhatsAppService } from '../../services/whatsapp'
 import { DatabaseService } from '../../services/database'
+import { OpenAIService } from '../../services/openaiService'
 import {
   ChatState,
   TempEventData,
-  NewEventData
+  NewEventData,
+  AIEventExtraction
 } from '../../types/processTangoConversation'
 import { getMainMenuMessage } from './utils'
 import { caseToday, caseWeek, handleEventSelection } from './showEvents'
@@ -11,13 +13,15 @@ import {
   handleTeacherCreation,
   startTeacherCreation,
 } from './createTeacher'
-import { handleNewEventCreation, showSpecialMenu } from './createEvent'
 
 const secretWord = process.env.SECRETWORD
 
 const userStates = new Map<string, ChatState>()
 const tempEventData = new Map<string, TempEventData>()
-const newEventData = new Map<string, NewEventData>()
+const aiEventData = new Map<string, { 
+  extraction: AIEventExtraction, 
+  originalInput: string 
+}>()
 
 export async function handleConversation(
   phoneNumber: string,
@@ -39,7 +43,7 @@ export async function handleConversation(
           phoneNumber,
           `¡Hola! ${welcomeName} Entraste al menú secreto`
         )
-        return showSpecialMenuWithCreateTeacher(userStates, phoneNumber)
+        return showSimplifiedSpecialMenu(userStates, phoneNumber)
       } else if (existingUser && existingUser.role !== 'normal_query') {
         console.log(
           `Usuario especial detectado: ${existingUser.name} (${existingUser.role})`
@@ -49,7 +53,7 @@ export async function handleConversation(
           phoneNumber,
           `¡Hola! ${welcomeName} Entraste al menú secreto`
         )
-        return showSpecialMenuWithCreateTeacher(userStates, phoneNumber)
+        return showSimplifiedSpecialMenu(userStates, phoneNumber)
       } else {
         // Primera vez que entra o usuario normal
         console.log(
@@ -100,45 +104,18 @@ export async function handleConversation(
       return handleTeacherCreation(userStates, phoneNumber, messageContent)
 
     case ChatState.SPECIAL_MENU:
-    case ChatState.CREATE_EVENT_TITLE:
-    case ChatState.CREATE_EVENT_VENUE:
-    case ChatState.CREATE_EVENT_ADDRESS:
-    case ChatState.CREATE_EVENT_DATE:
-    case ChatState.CREATE_CLASS_SINGLE_OR_MULTIPLE:
-    case ChatState.CREATE_CLASS_TIME:
-    case ChatState.CREATE_CLASS_LEVEL:
-    case ChatState.CREATE_CLASS_ADD_ANOTHER:
-    case ChatState.CREATE_CLASS_PRACTICE:
-    case ChatState.CREATE_CLASS_PRACTICE_TIME:
-    case ChatState.CREATE_MILONGA_TIME:
-    case ChatState.CREATE_MILONGA_PRE_CLASS:
-    case ChatState.CREATE_MILONGA_PRE_CLASS_DETAILS:
-    case ChatState.CREATE_MILONGA_SHOW:
-    case ChatState.CREATE_SPECIAL_TIME:
-    case ChatState.CREATE_EVENT_ORGANIZERS:
-    case ChatState.CREATE_EVENT_ORGANIZER_SELF:
-    case ChatState.CREATE_EVENT_ORGANIZER_ADDITIONAL:
-    case ChatState.CREATE_EVENT_ORGANIZER_SEARCH:
-    case ChatState.CREATE_EVENT_ORGANIZER_SELECT:
-    case ChatState.CREATE_EVENT_ORGANIZER_ONE_TIME:
-    case ChatState.CREATE_EVENT_RECURRENCE:
-    case ChatState.CREATE_EVENT_CONTACT:
-    case ChatState.CREATE_EVENT_CONTACT_NUMBER:
-    case ChatState.CREATE_EVENT_REMINDER:
-    case ChatState.CREATE_EVENT_REMINDER_NUMBER:
-    case ChatState.CREATE_EVENT_DESCRIPTION:
-    case ChatState.CREATE_EVENT_PRICING:
-    case ChatState.CREATE_EVENT_PRICING_TYPE:
-    case ChatState.CREATE_EVENT_PRICING_DETAILS: 
-    case ChatState.CREATE_EVENT_PRICING_AMOUNT: 
-    case ChatState.CREATE_EVENT_PRICING_ADD_MORE:
-    case ChatState.CREATE_EVENT_CONFIRMATION:
-      return handleNewEventCreation(
-        userStates,
-        newEventData,
-        phoneNumber,
-        messageContent
-      )
+      return handleSpecialMenuOptions(userStates, phoneNumber, normalizedMessage)
+
+    // Nuevos casos para IA
+    case ChatState.AI_EVENT_INPUT:
+      return handleAIEventInput(userStates, aiEventData, phoneNumber, messageContent)
+
+    case ChatState.AI_EVENT_VALIDATION:
+      return handleAIEventValidation(userStates, aiEventData, phoneNumber, normalizedMessage)
+
+    case ChatState.AI_EVENT_CORRECTION:
+      return handleAIEventCorrection(userStates, aiEventData, phoneNumber, messageContent)
+
     default:
       userStates.set(phoneNumber, ChatState.START)
       return WhatsAppService.sendTextMessage(
@@ -148,7 +125,8 @@ export async function handleConversation(
   }
 }
 
-export const showSpecialMenuWithCreateTeacher = async (
+// Nuevo menú simplificado
+const showSimplifiedSpecialMenu = async (
   userStates: Map<string, ChatState>,
   phoneNumber: string
 ) => {
@@ -157,15 +135,299 @@ export const showSpecialMenuWithCreateTeacher = async (
     phoneNumber,
     `📋 ¿Qué te gustaría hacer?
 
-1 - Crear *clase*
-2 - Crear *milonga*
-3 - Crear *seminario*
-4 - Crear *evento especial*
-5 - Crear *profesor* (otra persona)
-6 - Modificar un *evento*
+1 - Crear evento (describe todo en un mensaje)
+2 - Crear profesor (otra persona)
+3 - Modificar un evento
 
 0 - Volver al menú principal`
   )
+}
+
+async function handleSpecialMenuOptions(
+  userStates: Map<string, ChatState>,
+  phoneNumber: string,
+  normalizedMessage: string
+) {
+  if (['1', 'crear evento', 'evento'].includes(normalizedMessage)) {
+    userStates.set(phoneNumber, ChatState.AI_EVENT_INPUT)
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `🎭 *Crear evento con IA*
+
+Describe tu evento en un solo mensaje. Incluye toda la información que puedas:
+
+*Ejemplo:*
+"Crear clase de tango principiantes todos los martes 20hs en UADE, Magallanes 2025"
+
+o
+
+"Milonga en La Trastienda el sábado 21hs con clase previa a las 19:30"
+
+_Envía "0" para volver_`
+    )
+  } else if (['2', 'crear profesor', 'profesor'].includes(normalizedMessage)) {
+    return startTeacherCreation(userStates, phoneNumber)
+  } else if (['3', 'modificar'].includes(normalizedMessage)) {
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `🛠️ Modificar evento (en desarrollo)...`
+    )
+  } else if (['0', 'volver', 'salir'].includes(normalizedMessage)) {
+    userStates.set(phoneNumber, ChatState.MAIN_MENU)
+    return WhatsAppService.sendTextMessage(phoneNumber, getMainMenuMessage())
+  } else {
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `❓ Opción inválida. Elegí una opción del menú (1-3) o "0" para volver al menú principal.`
+    )
+  }
+}
+
+// Nuevo manejador para entrada de IA
+async function handleAIEventInput(
+  userStates: Map<string, ChatState>,
+  aiEventData: Map<string, { extraction: AIEventExtraction, originalInput: string }>,
+  phoneNumber: string,
+  messageContent: string
+) {
+  if (messageContent.trim().toLowerCase() === '0') {
+    userStates.set(phoneNumber, ChatState.SPECIAL_MENU)
+    return showSimplifiedSpecialMenu(userStates, phoneNumber)
+  }
+
+  // Obtener contexto del usuario
+  const user = await DatabaseService.getUserByPhone(phoneNumber)
+  const context = {
+    userPhone: phoneNumber,
+    isTeacher: user?.role === 'teacher',
+    userName: user?.name
+  }
+
+  await WhatsAppService.sendTextMessage(
+    phoneNumber,
+    `🤖 Procesando tu evento...`
+  )
+
+  // Llamar a Gemini para extraer información
+  const extraction = await OpenAIService.extractEventData(messageContent, context)
+
+  // Guardar la extracción y entrada original
+  aiEventData.set(phoneNumber, {
+    extraction,
+    originalInput: messageContent
+  })
+
+  if (extraction.confidence < 30 || extraction.needsHumanInput) {
+    // Confidence muy baja, hacer preguntas de seguimiento
+    let followUpMessage = extraction.validationMessage + '\n\n'
+    
+    if (extraction.followUpQuestions && extraction.followUpQuestions.length > 0) {
+      followUpMessage += '*Ayúdame respondiendo:*\n'
+      extraction.followUpQuestions.forEach((question, index) => {
+        followUpMessage += `${index + 1}. ${question}\n`
+      })
+    }
+
+    followUpMessage += '\n_Envía "0" para volver_'
+
+    return WhatsAppService.sendTextMessage(phoneNumber, followUpMessage)
+  }
+
+  // Confidence aceptable, mostrar validación
+  const validationMessage = OpenAIService.buildValidationMessage(extraction)
+  userStates.set(phoneNumber, ChatState.AI_EVENT_VALIDATION)
+  
+  return WhatsAppService.sendTextMessage(phoneNumber, validationMessage)
+}
+
+// Manejador para validación de evento IA
+async function handleAIEventValidation(
+  userStates: Map<string, ChatState>,
+  aiEventData: Map<string, { extraction: AIEventExtraction, originalInput: string }>,
+  phoneNumber: string,
+  normalizedMessage: string
+) {
+  if (normalizedMessage === '0') {
+    aiEventData.delete(phoneNumber)
+    userStates.set(phoneNumber, ChatState.SPECIAL_MENU)
+    return showSimplifiedSpecialMenu(userStates, phoneNumber)
+  }
+
+  const storedData = aiEventData.get(phoneNumber)
+  if (!storedData) {
+    userStates.set(phoneNumber, ChatState.SPECIAL_MENU)
+    return showSimplifiedSpecialMenu(userStates, phoneNumber)
+  }
+
+  if (['1', 'si', 'sí', 'confirmo', 'crear'].includes(normalizedMessage)) {
+    // Confirmar y crear evento
+    return await createEventFromAI(userStates, aiEventData, phoneNumber)
+  } else if (['2', 'no', 'corregir', 'modificar'].includes(normalizedMessage)) {
+    // Permitir correcciones
+    userStates.set(phoneNumber, ChatState.AI_EVENT_CORRECTION)
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `🔧 ¿Qué quieres corregir?
+
+Describe los cambios que quieres hacer:
+
+*Ejemplos:*
+- "La fecha es el viernes, no el martes"
+- "El horario es 21hs, no 20hs"
+- "Agregar práctica a las 23hs"
+
+_Envía "0" para volver_`
+    )
+  } else {
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `❓ Por favor responde:
+
+1 - ✅ Sí, crear evento
+2 - ❌ Corregir algo
+
+_Envía "0" para volver_`
+    )
+  }
+}
+
+// Manejador para correcciones
+async function handleAIEventCorrection(
+  userStates: Map<string, ChatState>,
+  aiEventData: Map<string, { extraction: AIEventExtraction, originalInput: string }>,
+  phoneNumber: string,
+  messageContent: string
+) {
+  if (messageContent.trim().toLowerCase() === '0') {
+    userStates.set(phoneNumber, ChatState.AI_EVENT_VALIDATION)
+    const storedData = aiEventData.get(phoneNumber)
+    if (storedData) {
+      const validationMessage = OpenAIService.buildValidationMessage(storedData.extraction)
+      return WhatsAppService.sendTextMessage(phoneNumber, validationMessage)
+    }
+    return showSimplifiedSpecialMenu(userStates, phoneNumber)
+  }
+
+  const storedData = aiEventData.get(phoneNumber)
+  if (!storedData) {
+    userStates.set(phoneNumber, ChatState.SPECIAL_MENU)
+    return showSimplifiedSpecialMenu(userStates, phoneNumber)
+  }
+
+  await WhatsAppService.sendTextMessage(
+    phoneNumber,
+    `🤖 Procesando correcciones...`
+  )
+
+  // Usar Gemini para continuar la conversación diagnóstica
+  const updatedExtraction = await OpenAIService.continueDiagnosticConversation(
+    storedData.originalInput,
+    storedData.extraction,
+    messageContent
+  )
+
+  // Actualizar datos almacenados
+  aiEventData.set(phoneNumber, {
+    ...storedData,
+    extraction: updatedExtraction
+  })
+
+  // Mostrar nueva validación
+  const validationMessage = OpenAIService.buildValidationMessage(updatedExtraction)
+  userStates.set(phoneNumber, ChatState.AI_EVENT_VALIDATION)
+  
+  return WhatsAppService.sendTextMessage(phoneNumber, validationMessage)
+}
+
+// Crear evento desde extracción IA
+async function createEventFromAI(
+  userStates: Map<string, ChatState>,
+  aiEventData: Map<string, { extraction: AIEventExtraction, originalInput: string }>,
+  phoneNumber: string
+): Promise<any> {
+  const storedData = aiEventData.get(phoneNumber)
+  if (!storedData) {
+    return WhatsAppService.sendTextMessage(phoneNumber, '❌ Error: No se encontraron datos del evento')
+  }
+
+  const { extraction } = storedData
+  const extractedData = extraction.extractedData
+
+  try {
+    // Validar datos mínimos requeridos
+    if (!extractedData.event_type || !extractedData.title || !extractedData.venue_name || !extractedData.address || !extractedData.date) {
+      return WhatsAppService.sendTextMessage(
+        phoneNumber,
+        `❌ Faltan datos críticos para crear el evento:
+        
+${!extractedData.event_type ? '• Tipo de evento' : ''}
+${!extractedData.title ? '• Título' : ''}
+${!extractedData.venue_name ? '• Lugar' : ''}
+${!extractedData.address ? '• Dirección' : ''}
+${!extractedData.date ? '• Fecha' : ''}
+
+Por favor, describe nuevamente tu evento con esta información.`
+      )
+    }
+
+    // Preparar datos para crear evento
+    const eventData: NewEventData = {
+      event_type: extractedData.event_type,
+      title: extractedData.title,
+      venue_name: extractedData.venue_name,
+      address: extractedData.address,
+      date: extractedData.date,
+      description: extractedData.description,
+      has_weekly_recurrence: extractedData.has_weekly_recurrence || false,
+      show_description: extractedData.show_description,
+      classes: extractedData.classes,
+      practice: extractedData.practice,
+      pre_class: extractedData.pre_class,
+      organizers: [] // Por ahora sin organizadores específicos
+    }
+
+    // Crear el evento
+    const newEvent = await DatabaseService.createTangoEvent(phoneNumber, eventData)
+
+    if (newEvent) {
+      // Limpiar datos temporales
+      aiEventData.delete(phoneNumber)
+      userStates.set(phoneNumber, ChatState.SPECIAL_MENU)
+
+      const eventTypeName = {
+        class: 'clase',
+        milonga: 'milonga', 
+        seminar: 'seminario',
+        special_event: 'evento especial'
+      }[extractedData.event_type]
+
+      let successMessage = `🎉 ¡Excelente! Tu ${eventTypeName} *"${extractedData.title}"* ha sido creada exitosamente.\n\n`
+
+      if (extractedData.has_weekly_recurrence) {
+        successMessage += `🔔 Recordatorio: Mensualmente te llegará una notificación para confirmar si seguís organizando esta actividad.\n\n`
+      }
+
+      successMessage += `¿Quieres crear otro evento?\n\n`
+      successMessage += `1 - Crear otro evento\n`
+      successMessage += `2 - Crear profesor\n`
+      successMessage += `0 - Volver al menú principal`
+
+      return WhatsAppService.sendTextMessage(phoneNumber, successMessage)
+    } else {
+      userStates.set(phoneNumber, ChatState.START)
+      return WhatsAppService.sendTextMessage(
+        phoneNumber,
+        `❌ Ocurrió un error al crear tu evento.\n\nPor favor intenta nuevamente más tarde.`
+      )
+    }
+  } catch (error) {
+    console.error('Error creating event from AI:', error)
+    userStates.set(phoneNumber, ChatState.START)
+    return WhatsAppService.sendTextMessage(
+      phoneNumber,
+      `❌ Ocurrió un error al crear tu evento.\n\nPor favor intenta nuevamente más tarde.`
+    )
+  }
 }
 
 async function handleMainMenuOptions(

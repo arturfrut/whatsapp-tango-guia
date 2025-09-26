@@ -12,7 +12,7 @@ export enum ChatState {
   SPECIAL_MENU = 'SPECIAL_MENU',
 
   NEW_TEACHER_NAME = 'NEW_TEACHER_NAME',
-  NEW_TEACHER_DETAILS = 'NEW_TEACHER_DETAILS', // Eliminamos NEW_TEACHER_PASSWORD
+  NEW_TEACHER_DETAILS = 'NEW_TEACHER_DETAILS', 
   NEW_TEACHER_CONFIRMATION = 'NEW_TEACHER_CONFIRMATION',
 
   CREATE_OTHER_TEACHER_PHONE = 'CREATE_OTHER_TEACHER_PHONE',
@@ -20,57 +20,10 @@ export enum ChatState {
   CREATE_OTHER_TEACHER_DETAILS = 'CREATE_OTHER_TEACHER_DETAILS',
   CREATE_OTHER_TEACHER_CONFIRMATION = 'CREATE_OTHER_TEACHER_CONFIRMATION',
 
-  CREATE_EVENT_TYPE = 'CREATE_EVENT_TYPE',
-  CREATE_EVENT_TITLE = 'CREATE_EVENT_TITLE',
-  CREATE_EVENT_VENUE = 'CREATE_EVENT_VENUE',
-  CREATE_EVENT_ADDRESS = 'CREATE_EVENT_ADDRESS',
-  CREATE_EVENT_DATE = 'CREATE_EVENT_DATE',
-
-  // Para clases
-  CREATE_CLASS_SINGLE_OR_MULTIPLE = 'CREATE_CLASS_SINGLE_OR_MULTIPLE',
-  CREATE_CLASS_TIME = 'CREATE_CLASS_TIME',
-  CREATE_CLASS_LEVEL = 'CREATE_CLASS_LEVEL',
-  CREATE_CLASS_ADD_ANOTHER = 'CREATE_CLASS_ADD_ANOTHER',
-  CREATE_CLASS_PRACTICE = 'CREATE_CLASS_PRACTICE',
-  CREATE_CLASS_PRACTICE_TIME = 'CREATE_CLASS_PRACTICE_TIME',
-
-  // Para seminarios
-  CREATE_SEMINAR_DAYS = 'CREATE_SEMINAR_DAYS',
-  CREATE_SEMINAR_DAY_DATE = 'CREATE_SEMINAR_DAY_DATE',
-  CREATE_SEMINAR_DAY_THEME = 'CREATE_SEMINAR_DAY_THEME',
-  CREATE_SEMINAR_DAY_CLASSES = 'CREATE_SEMINAR_DAY_CLASSES',
-  CREATE_SEMINAR_DAY_CLASS_DETAILS = 'CREATE_SEMINAR_DAY_CLASS_DETAILS',
-  CREATE_SEMINAR_PRACTICE = 'CREATE_SEMINAR_PRACTICE',
-
-  // Para milongas
-  CREATE_MILONGA_TIME = 'CREATE_MILONGA_TIME',
-  CREATE_MILONGA_PRE_CLASS = 'CREATE_MILONGA_PRE_CLASS',
-  CREATE_MILONGA_PRE_CLASS_DETAILS = 'CREATE_MILONGA_PRE_CLASS_DETAILS',
-  CREATE_MILONGA_SHOW = 'CREATE_MILONGA_SHOW',
-
-  // Para eventos especiales
-  CREATE_SPECIAL_TIME = 'CREATE_SPECIAL_TIME',
-
-  // Estados comunes
-  CREATE_EVENT_ORGANIZERS = 'CREATE_EVENT_ORGANIZERS',
-  CREATE_EVENT_ORGANIZER_SELF = 'CREATE_EVENT_ORGANIZER_SELF',
-  CREATE_EVENT_ORGANIZER_ADDITIONAL = 'CREATE_EVENT_ORGANIZER_ADDITIONAL',
-  CREATE_EVENT_ORGANIZER_SEARCH = 'CREATE_EVENT_ORGANIZER_SEARCH',
-  CREATE_EVENT_ORGANIZER_SELECT = 'CREATE_EVENT_ORGANIZER_SELECT',
-  CREATE_EVENT_ORGANIZER_ONE_TIME = 'CREATE_EVENT_ORGANIZER_ONE_TIME',
-
-  CREATE_EVENT_RECURRENCE = 'CREATE_EVENT_RECURRENCE',
-  CREATE_EVENT_CONTACT = 'CREATE_EVENT_CONTACT',
-  CREATE_EVENT_CONTACT_NUMBER = 'CREATE_EVENT_CONTACT_NUMBER',
-  CREATE_EVENT_REMINDER = 'CREATE_EVENT_REMINDER',
-  CREATE_EVENT_REMINDER_NUMBER = 'CREATE_EVENT_REMINDER_NUMBER',
-  CREATE_EVENT_DESCRIPTION = 'CREATE_EVENT_DESCRIPTION',
-  CREATE_EVENT_PRICING = 'CREATE_EVENT_PRICING',
-  CREATE_EVENT_PRICING_TYPE = 'CREATE_EVENT_PRICING_TYPE',
-  CREATE_EVENT_PRICING_DETAILS = 'CREATE_EVENT_PRICING_DETAILS',
-  CREATE_EVENT_PRICING_AMOUNT = 'CREATE_EVENT_PRICING_AMOUNT',
-  CREATE_EVENT_PRICING_ADD_MORE = 'CREATE_EVENT_PRICING_ADD_MORE',
-  CREATE_EVENT_CONFIRMATION = 'CREATE_EVENT_CONFIRMATION'
+  // Nuevos estados para IA
+  AI_EVENT_INPUT = 'AI_EVENT_INPUT',
+  AI_EVENT_VALIDATION = 'AI_EVENT_VALIDATION',
+  AI_EVENT_CORRECTION = 'AI_EVENT_CORRECTION'
 }
 
 export interface NewTeacherData {
@@ -142,6 +95,7 @@ export interface SeminarDay {
   theme?: string
   created_at: string
 }
+
 // Pre-milonga class
 export interface MilongaPreClass {
   id: string
@@ -249,24 +203,16 @@ export interface NewEventData {
     class_level?: ClassLevel
     organizers?: string[]
   }
+}
 
-  // Current state helpers
-  current_class_index?: number
-  current_seminar_day?: number
-  temp_organizer_search?: string
-  temp_pricing_detail?: string
-  temp_pricing_type?:
-    | 'class_only'
-    | 'practice_only'
-    | 'class_and_practice'
-    | 'milonga_only'
-    | 'class_and_milonga'
-  temp_organizer_results?: Array<{
-    id: string
-    name: string
-    phone_number: string
-    details: string
-  }>
+// Nueva interfaz para respuesta de IA
+export interface AIEventExtraction {
+  extractedData: Partial<NewEventData>
+  confidence: number
+  missingFields: string[]
+  validationMessage: string
+  needsHumanInput: boolean
+  followUpQuestions?: string[]
 }
 
 export enum UserRole {
@@ -282,7 +228,7 @@ export interface User {
   phone_number: string
   role: UserRole
   name?: string
-  password_hash?: string // Mantenemos el campo pero no lo usamos en creación
+  password_hash?: string
   details?: string
   is_active: boolean
   created_at: string

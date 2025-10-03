@@ -12,7 +12,7 @@ export enum ChatState {
   SPECIAL_MENU = 'SPECIAL_MENU',
 
   NEW_TEACHER_NAME = 'NEW_TEACHER_NAME',
-  NEW_TEACHER_DETAILS = 'NEW_TEACHER_DETAILS', 
+  NEW_TEACHER_DETAILS = 'NEW_TEACHER_DETAILS',
   NEW_TEACHER_CONFIRMATION = 'NEW_TEACHER_CONFIRMATION',
 
   CREATE_OTHER_TEACHER_PHONE = 'CREATE_OTHER_TEACHER_PHONE',
@@ -23,13 +23,16 @@ export enum ChatState {
   // Nuevos estados para IA
   AI_EVENT_INPUT = 'AI_EVENT_INPUT',
   AI_EVENT_VALIDATION = 'AI_EVENT_VALIDATION',
-  AI_EVENT_CORRECTION = 'AI_EVENT_CORRECTION'
+  AI_EVENT_CORRECTION = 'AI_EVENT_CORRECTION',
+  AI_EVENT_TEACHER_SEARCH = 'AI_EVENT_TEACHER_SEARCH',
+  AI_EVENT_TEACHER_SELECT = 'AI_EVENT_TEACHER_SELECT',
+  AI_EVENT_TEACHER_CREATE = 'AI_EVENT_TEACHER_CREATE'
 }
 
 export interface NewTeacherData {
   name?: string
   details?: string
-  phone?: string 
+  phone?: string
 }
 
 export type ClassLevel = 'beginner' | 'intermediate' | 'advanced' | 'all_levels'
@@ -213,6 +216,7 @@ export interface AIEventExtraction {
   validationMessage: string
   needsHumanInput: boolean
   followUpQuestions?: string[]
+  teacherNames?: string[]
 }
 
 export enum UserRole {
@@ -258,4 +262,28 @@ export interface TeacherSearchResult {
   name: string
   phone_number: string
   details?: string
+}
+
+
+
+export interface AIEventDataStore {
+  extraction: AIEventExtraction
+  originalInput: string
+  teacherSearchResults?: Array<{
+    searchedName: string
+    results: Array<{
+      id?: string
+      name?: string
+      phone_number?: string
+      details?: string
+    }>
+  }>
+  currentTeacherIndex?: number
+  selectedTeachers?: Array<{
+    user_id?: string
+    organizer_type: 'teacher' | 'special_user'
+    is_primary: boolean
+    is_one_time_teacher: boolean
+    one_time_teacher_name?: string
+  }>
 }
